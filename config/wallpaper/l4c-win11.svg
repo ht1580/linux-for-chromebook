@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" preserveAspectRatio="xMidYMid slice">
+  <!-- linux-for-chromebook 原创壁纸：柔和蓝色背景 + 几条交叠的半透明“花瓣”曲线（Win11 风格，非微软素材） -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="58%" r="75%">
+      <stop offset="0" stop-color="#e9f3ff"/>
+      <stop offset="0.45" stop-color="#bcd7f5"/>
+      <stop offset="1" stop-color="#7fa6d9"/>
+    </radialGradient>
+    <linearGradient id="p1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f7de0" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#0a3d91" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="p2" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#5aa9ff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#1d5fc4" stop-opacity="0.75"/>
+    </linearGradient>
+    <linearGradient id="p3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a9d2ff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#3c86e8" stop-opacity="0.6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <ellipse cx="960" cy="610" rx="620" ry="360" fill="url(#glow)"/>
+  <g transform="translate(960 640)">
+    <path d="M0 0 C -120 -260 -420 -330 -640 -210 C -470 -150 -250 -60 0 0 Z" fill="url(#p2)"/>
+    <path d="M0 0 C 120 -260 420 -330 640 -210 C 470 -150 250 -60 0 0 Z" fill="url(#p2)"/>
+    <path d="M0 0 C -60 -300 -260 -470 -470 -470 C -330 -330 -170 -150 0 0 Z" fill="url(#p1)"/>
+    <path d="M0 0 C 60 -300 260 -470 470 -470 C 330 -330 170 -150 0 0 Z" fill="url(#p1)"/>
+    <path d="M0 0 C -70 -230 -60 -420 0 -540 C 60 -420 70 -230 0 0 Z" fill="url(#p3)"/>
+    <path d="M0 0 C -200 40 -480 10 -700 -90 C -470 -10 -220 30 0 0 Z" fill="#1b4fa8" fill-opacity="0.35"/>
+    <path d="M0 0 C 200 40 480 10 700 -90 C 470 -10 220 30 0 0 Z" fill="#1b4fa8" fill-opacity="0.35"/>
+  </g>
+</svg>

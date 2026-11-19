@@ -5,6 +5,8 @@
 #   ./setup/desktop-win11.sh --no-panel      不改任务栏，只改快捷键和窗口行为
 #   ./setup/desktop-win11.sh --restore DIR   恢复之前备份的 Xfce 设置
 #   sudo ./setup/desktop-win11.sh --install-theme   系统级安装 Fluent 主题和图标
+#   ./setup/desktop-win11.sh --look          只换外观：壁纸、锁屏/屏保、通知位置、开始菜单、光标、合成器
+#   sudo ./setup/desktop-win11.sh --system-look     系统级外观：Win11 登录界面、壁纸文件、开机菜单 1 秒、精简光标包
 # 修改前会把原有 Xfce 设置备份到 ~/.local/share/l4c/xfce-backup-时间/
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
@@ -26,6 +28,52 @@ install_theme_system() {
     (cd "$dir/icons" && ./install.sh -d /usr/share/icons >/dev/null) && ok "Fluent 图标已安装" || warn "图标安装失败"
   fi
   rm -rf "$dir"
+  install_system_look
+}
+
+# 系统级的 Win11 外观：壁纸、登录/锁屏界面、开机菜单，以及去掉用不到的大主题包。
+# 全部只是配置和一张图片，不增加常驻程序；顺带腾出约 300 MB。
+install_system_look() {
+  require_root
+  local bg=/usr/share/backgrounds/l4c
+  mkdir -p "$bg"
+  install -m 644 "$L4C_ROOT/config/wallpaper/l4c-win11.svg" "$bg/l4c-win11.svg"
+  # 预先渲染成 PNG：每次开机/登录解码 PNG 比渲染 SVG 快得多
+  if have rsvg-convert; then
+    rsvg-convert -w 1920 -h 1080 -o "$bg/l4c-win11.png" "$bg/l4c-win11.svg" && ok "壁纸：$bg/l4c-win11.png"
+  else
+    cp "$bg/l4c-win11.svg" "$bg/l4c-win11.png.svg"; warn "没有 rsvg-convert，壁纸使用 SVG"
+  fi
+
+  if [[ -d /etc/lightdm ]]; then
+    backup_file /etc/lightdm/lightdm-gtk-greeter.conf
+    put_config lightdm/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
+    [[ -f $bg/l4c-win11.png ]] || sed -i "s|^background=.*|background=$bg/l4c-win11.svg|" /etc/lightdm/lightdm-gtk-greeter.conf
+    ok "登录界面：Win11 风格（重启或注销后可见）"
+  fi
+
+  # 开机：GRUB 菜单本来就隐藏，等待从 2 秒减到 1 秒（开机时按 Esc 仍可调出菜单）
+  if [[ -f /etc/default/grub ]] && grep -q '^GRUB_TIMEOUT_STYLE=hidden' /etc/default/grub &&
+     grep -qE '^GRUB_TIMEOUT=[2-9]' /etc/default/grub; then
+    sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/' /etc/default/grub
+    { have update-grub && update-grub >/dev/null 2>&1; } || grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    ok "开机菜单等待改为 1 秒"
+  fi
+
+  # 光标包 bibata-cursor-theme-bin 带 12 个变体（约 320 MB），只留 Win11 风格的白色 Modern-Ice
+  if pkg_installed bibata-cursor-theme-bin && [[ -d /usr/share/icons/Bibata-Modern-Ice ]] &&
+     confirm "光标包有 12 个变体约 320 MB，只保留用到的白色光标（腾出约 290 MB）？" y; then
+    local keep; keep=$(mktemp -d)
+    cp -a /usr/share/icons/Bibata-Modern-Ice "$keep/" &&
+      pacman -Rns --noconfirm bibata-cursor-theme-bin >/dev/null &&
+      mv "$keep/Bibata-Modern-Ice" /usr/share/icons/ && ok "光标包已精简" || warn "光标包精简失败"
+    rm -rf "$keep"
+  fi
+  # 旧系统带来的 Matcha 主题，Win11 外观用不到
+  if pkg_installed matcha-gtk-theme && ! grep -rqs Matcha /home/*/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml &&
+     confirm "删除用不到的 Matcha 主题（约 28 MB）？" y; then
+    pacman -Rns --noconfirm matcha-gtk-theme >/dev/null && ok "Matcha 主题已删除"
+  fi
 }
 
 first_existing() { # 在主题目录里找第一个存在的名字
@@ -136,7 +184,7 @@ apply_wm() {
   xset_ xfwm4 /general/cycle_preview bool true
   xset_ xfwm4 /general/cycle_tabwin_mode int 0
   xset_ xfwm4 /general/double_click_action string "maximize"
-  xset_ xfwm4 /general/use_compositing bool true
+  apply_compositor
   xset_ xfwm4 /general/vblank_mode string "glx"
   xset_ xfwm4 /general/show_dock_shadow bool false
   xset_ xfce4-desktop /desktop-icons/style int 2
@@ -158,8 +206,100 @@ apply_theme() {
   xset_ xsettings /Net/ThemeName string "$t"
   xset_ xfwm4 /general/theme string "$t"
   if i=$(first_existing icons Fluent Fluent-light); then xset_ xsettings /Net/IconThemeName string "$i"; fi
-  if c=$(first_existing icons Bibata-Modern-Classic Bibata-Modern-Ice); then xset_ xsettings /Gtk/CursorThemeName string "$c"; fi
+  # Win11 的光标是白色箭头
+  if c=$(first_existing icons Bibata-Modern-Ice Bibata-Modern-Classic); then xset_ xsettings /Gtk/CursorThemeName string "$c"; fi
   ok "主题已切换为 $t"
+}
+
+# 只能有一个合成器：用户自己开了 picom（圆角、阴影 = Win11 外观）就关掉 xfwm4 的合成，避免两份开销
+apply_compositor() {
+  local pc="$HOME/.config/picom/picom.conf" a
+  for a in "$HOME"/.config/autostart/*picom*.desktop /etc/xdg/autostart/picom.desktop; do
+    [[ -f $a ]] && ! grep -qi '^Hidden=true' "$a" && { USE_PICOM=1; break; }
+  done
+  if ((${USE_PICOM:-0})); then
+    xset_ xfwm4 /general/use_compositing bool false
+    # 非活动窗口半透明每帧都要多混合一次，Win11 也没有这个效果
+    if [[ -f $pc ]] && grep -qE '^\s*inactive-opacity\s*=\s*0\.' "$pc"; then
+      cp -n "$pc" "$pc.l4c-bak"
+      sed -i -E 's/^(\s*inactive-opacity\s*=\s*)0\.[0-9]+/\11.0/' "$pc"
+    fi
+    ok "窗口合成：只用 picom（圆角 + 阴影），已关闭 xfwm4 自带合成"
+  else
+    xset_ xfwm4 /general/use_compositing bool true
+  fi
+}
+
+# 壁纸：所有显示器、所有工作区
+apply_wallpaper() {
+  local img=/usr/share/backgrounds/l4c/l4c-win11.png mon ws props
+  [[ -f $img ]] || img=/usr/share/backgrounds/l4c/l4c-win11.svg
+  [[ -f $img ]] || { warn "没有 Win11 壁纸，先运行：sudo bash $L4C_ROOT/setup/desktop-win11.sh --system-look"; return 0; }
+  props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -E '/workspace[0-9]+/last-image$' || true)
+  if [[ -z $props ]] && have xrandr; then
+    for mon in $(xrandr --listmonitors 2>/dev/null | awk 'NR>1 {print $NF}'); do
+      for ws in 0 1 2 3; do props+="/backdrop/screen0/monitor$mon/workspace$ws/last-image"$'\n'; done
+    done
+  fi
+  while IFS= read -r p; do
+    [[ -n $p ]] || continue
+    xset_ xfce4-desktop "$p" string "$img"
+    xset_ xfce4-desktop "${p%/last-image}/image-style" int 5   # 缩放填满
+  done <<<"$props"
+  ok "壁纸：Win11 风格"
+}
+
+# 屏保 / 锁屏：和 Win11 一样，空闲后直接黑屏（不放动画，省电），唤醒要输密码
+apply_lockscreen() {
+  have xfce4-screensaver || return 0
+  xset_ xfce4-screensaver /saver/enabled bool true
+  xset_ xfce4-screensaver /saver/mode int 0                 # 0 = 只黑屏
+  xset_ xfce4-screensaver /saver/idle-activation/enabled bool true
+  xset_ xfce4-screensaver /saver/idle-activation/delay int 5
+  xset_ xfce4-screensaver /saver/fullscreen-inhibit bool true   # 全屏看视频时不黑屏
+  xset_ xfce4-screensaver /lock/enabled bool true
+  xset_ xfce4-screensaver /lock/saver-activation/enabled bool true
+  xset_ xfce4-screensaver /lock/saver-activation/delay int 0
+  xset_ xfce4-screensaver /lock/sleep-activation bool true      # 合盖/睡眠后要密码
+  xset_ xfce4-screensaver /lock/status-messages/enabled bool false
+  ok "屏保：空闲 5 分钟黑屏，唤醒需要密码（Win+L 立即锁屏）"
+}
+
+# 通知：右下角滑出，5 秒后消失
+apply_notify() {
+  xset_ xfce4-notifyd /notify-location uint 3
+  xset_ xfce4-notifyd /do-slideout bool true
+  xset_ xfce4-notifyd /expire-timeout int 5
+}
+
+# 开始菜单：搜索在顶部，先显示“已固定”，底部是电源/锁屏
+apply_menu() {
+  local id
+  for id in $(xfconf-query -c xfce4-panel -lv 2>/dev/null | awk '$2=="whiskermenu" {sub(".*/plugin-","",$1); print $1}'); do
+    local b=/plugins/plugin-$id
+    xset_ xfce4-panel "$b/position-search-alternate" bool true
+    xset_ xfce4-panel "$b/position-commands-alternate" bool true
+    xset_ xfce4-panel "$b/default-category" int 0
+    xset_ xfce4-panel "$b/category-show-name" bool true
+    xset_ xfce4-panel "$b/show-button-title" bool false
+    xset_ xfce4-panel "$b/profile-shape" int 0
+    xset_ xfce4-panel "$b/recent-items-max" int 6
+    xset_ xfce4-panel "$b/menu-width" int 620
+    xset_ xfce4-panel "$b/menu-height" int 560
+    local c; for c in lockscreen logoutuser restart shutdown settings; do xset_ xfce4-panel "$b/show-command-$c" bool true; done
+    for c in switchuser suspend hibernate menueditor profile; do xset_ xfce4-panel "$b/show-command-$c" bool false; done
+  done
+  ok "开始菜单：搜索在顶部，已固定的应用在前，底部是锁屏/重启/关机"
+}
+
+# 只换外观（主题、壁纸、锁屏、通知、开始菜单、合成器），不动任务栏和快捷键
+apply_look() {
+  apply_theme
+  apply_compositor
+  apply_wallpaper
+  apply_lockscreen
+  apply_notify
+  apply_menu
 }
 
 apply_fcitx() {
@@ -311,11 +451,13 @@ ARGS=()
 while (($#)); do
   case $1 in
     --install-theme) install_theme_system; exit 0 ;;
+    --system-look) install_system_look; exit 0 ;;
+    --look) DO_LOOK_ONLY=1 ;;
     --restore) restore_xfce "${2:?需要备份目录}"; exit 0 ;;
     --theme) DO_THEME=1 ;;
     --no-panel) DO_PANEL=0 ;;
     --first-login) FIRST_LOGIN=1; L4C_YES=1 ;;
-    -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     *) ARGS+=("$1") ;;
   esac
   shift
@@ -334,14 +476,24 @@ if ((FIRST_LOGIN)); then
   done
 fi
 
+if ((${DO_LOOK_ONLY:-0})); then
+  info "应用 Windows 11 外观"
+  backup_xfce
+  apply_look
+  pgrep -x picom >/dev/null && ((${USE_PICOM:-0})) && { pkill -USR1 -x picom 2>/dev/null || true; }   # 让 picom 重新读配置
+  ok "完成！登录界面在注销或重启后可见。"
+  exit 0
+fi
+
 info "应用 Windows 11 使用习惯"
 backup_xfce
 apply_shortcuts
 apply_wm
-((DO_THEME)) && apply_theme
+((DO_THEME)) && apply_look
 apply_fcitx
 add_templates
 ((DO_PANEL)) && apply_panel
+((DO_THEME)) && apply_menu   # 新生成的任务栏也要套上开始菜单样式
 
 if ((FIRST_LOGIN)); then
   rm -f "$HOME/.config/autostart/l4c-first-login.desktop" "$HOME/.config/l4c/first-login.args"

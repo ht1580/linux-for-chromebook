@@ -22,6 +22,7 @@ linux-for-chromebook $L4C_VERSION
     audio                   安装 Chromebook 声卡驱动
     desktop [--theme]       Windows 11 风格桌面和快捷键
     theme                   下载安装 Fluent（Win11 风格）主题和图标
+    look                    Win11 外观：登录/锁屏界面、壁纸、黑屏屏保、通知、开始菜单、光标
     undo-desktop <备份目录> 恢复修改前的桌面设置
   全新安装
     install                 在 Manjaro 启动 U 盘里运行，全新安装优化版系统
@@ -75,6 +76,7 @@ case $cmd in
   info)         exec bash "$L4C_ROOT/setup/chromebook.sh" info ;;
   desktop)      exec bash "$L4C_ROOT/setup/desktop-win11.sh" "$@" ;;
   theme)        exec sudo bash "$L4C_ROOT/setup/desktop-win11.sh" --install-theme ;;
+  look)         sudo bash "$L4C_ROOT/setup/desktop-win11.sh" --system-look && exec bash "$L4C_ROOT/setup/desktop-win11.sh" --look ;;
   undo-desktop) exec bash "$L4C_ROOT/setup/desktop-win11.sh" --restore "$@" ;;
   install)      exec sudo bash "$L4C_ROOT/install/install.sh" "$@" ;;
   scan)         exec sudo bash "$L4C_ROOT/setup/scan.sh" "$@" ;;
