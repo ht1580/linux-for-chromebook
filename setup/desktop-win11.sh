@@ -6,12 +6,16 @@
 #   ./setup/desktop-win11.sh --restore DIR   恢复之前备份的 Xfce 设置
 #   sudo ./setup/desktop-win11.sh --install-theme   系统级安装 Fluent 主题和图标
 #   ./setup/desktop-win11.sh --look          只换外观：壁纸、锁屏/屏保、通知位置、开始菜单、光标、合成器
-#   sudo ./setup/desktop-win11.sh --system-look     系统级外观：Win11 登录界面、壁纸文件、开机菜单 1 秒、精简光标包
+#   sudo ./setup/desktop-win11.sh --system-look [--win-wallpaper DIR]   系统级外观：登录界面、壁纸、开机菜单 1 秒、精简光标包
+#        DIR = 从你自己的 Windows 复制来的 C:\Windows\Web（用 Win11 原版壁纸和锁屏图；微软素材，不放进仓库）
 # 修改前会把原有 Xfce 设置备份到 ~/.local/share/l4c/xfce-backup-时间/
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
 XFCONF_DIR="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
+# 重启桌面组件时要带上会话的语言（从 SSH 远程运行时 LANG 可能是空的，回收站会变成英文 Trash）
+SESSION_LANG=${LANG:-$(sed -n 's/^LANG=//p' /etc/locale.conf 2>/dev/null | tr -d '"')}
+SESSION_LANG=${SESSION_LANG:-zh_CN.UTF-8}
 PANEL_DIR="$HOME/.config/xfce4/panel"
 DO_PANEL=1 DO_THEME=0 FIRST_LOGIN=0
 
@@ -45,9 +49,17 @@ install_system_look() {
     cp "$bg/l4c-win11.svg" "$bg/l4c-win11.png.svg"; warn "没有 rsvg-convert，壁纸使用 SVG"
   fi
 
+  if [[ -n ${WIN_WALL:-} ]]; then
+    local f
+    f=$(ls "$WIN_WALL"/img0*.jpg "$WIN_WALL"/Wallpaper/Windows/img0*.jpg "$WIN_WALL"/4K/Wallpaper/Windows/img0_1920x1200.jpg 2>/dev/null | tail -1 || true)
+    [[ -n $f ]] && install -m 644 "$f" "$bg/win11-desktop.jpg" && ok "壁纸：Windows 11 原版（$(basename "$f")）"
+    f=$(ls "$WIN_WALL"/img100.jpg "$WIN_WALL"/Screen/img100.jpg 2>/dev/null | head -1 || true)
+    [[ -n $f ]] && install -m 644 "$f" "$bg/win11-lock.jpg" && ok "锁屏图：Windows 11 原版"
+  fi
   if [[ -d /etc/lightdm ]]; then
     backup_file /etc/lightdm/lightdm-gtk-greeter.conf
     put_config lightdm/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
+    [[ -f $bg/win11-lock.jpg ]] && sed -i "s|^background=.*|background=$bg/win11-lock.jpg|" /etc/lightdm/lightdm-gtk-greeter.conf
     [[ -f $bg/l4c-win11.png ]] || sed -i "s|^background=.*|background=$bg/l4c-win11.svg|" /etc/lightdm/lightdm-gtk-greeter.conf
     ok "登录界面：Win11 风格（重启或注销后可见）"
   fi
@@ -113,7 +125,7 @@ restore_xfce() {
   mkdir -p "$XFCONF_DIR" "$PANEL_DIR"
   cp -a "$src/xfce-perchannel-xml/." "$XFCONF_DIR/"
   [[ -d $src/panel ]] && cp -a "$src/panel/." "$PANEL_DIR/"
-  (setsid xfce4-panel >/dev/null 2>&1 &)
+  (setsid env LANG="$SESSION_LANG" xfce4-panel >/dev/null 2>&1 &)
   xfwm4 --replace >/dev/null 2>&1 & disown
   ok "已恢复 $src，如有异常请注销后重新登录"
 }
@@ -205,7 +217,9 @@ apply_theme() {
   t=$(first_existing themes Fluent-Light Fluent Fluent-round-Light Fluent-round) || { warn "没找到 Fluent 主题，先运行：sudo l4c theme"; return 0; }
   xset_ xsettings /Net/ThemeName string "$t"
   xset_ xfwm4 /general/theme string "$t"
-  if i=$(first_existing icons Fluent Fluent-light); then xset_ xsettings /Net/IconThemeName string "$i"; fi
+  # Fluent-yellow = 黄色文件夹，和 Win11 资源管理器一样
+  # Fluent-yellow = 黄色文件夹（Win11 资源管理器）；-light = 给浅色任务栏用的深色托盘图标
+  if i=$(first_existing icons Fluent-yellow-light Fluent-light Fluent-yellow Fluent); then xset_ xsettings /Net/IconThemeName string "$i"; fi
   # Win11 的光标是白色箭头
   if c=$(first_existing icons Bibata-Modern-Ice Bibata-Modern-Classic); then xset_ xsettings /Gtk/CursorThemeName string "$c"; fi
   ok "主题已切换为 $t"
@@ -232,8 +246,10 @@ apply_compositor() {
 
 # 壁纸：所有显示器、所有工作区
 apply_wallpaper() {
-  local img=/usr/share/backgrounds/l4c/l4c-win11.png mon ws props
-  [[ -f $img ]] || img=/usr/share/backgrounds/l4c/l4c-win11.svg
+  local img mon ws props
+  for img in /usr/share/backgrounds/l4c/win11-desktop.jpg /usr/share/backgrounds/l4c/l4c-win11.png /usr/share/backgrounds/l4c/l4c-win11.svg; do
+    [[ -f $img ]] && break
+  done
   [[ -f $img ]] || { warn "没有 Win11 壁纸，先运行：sudo bash $L4C_ROOT/setup/desktop-win11.sh --system-look"; return 0; }
   props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -E '/workspace[0-9]+/last-image$' || true)
   if [[ -z $props ]] && have xrandr; then
@@ -246,7 +262,22 @@ apply_wallpaper() {
     xset_ xfce4-desktop "$p" string "$img"
     xset_ xfce4-desktop "${p%/last-image}/image-style" int 5   # 缩放填满
   done <<<"$props"
-  ok "壁纸：Win11 风格"
+  # 桌面图标：和 Win11 默认一样只显示回收站（桌面文件夹里的文件照常显示），中等图标
+  xset_ xfce4-desktop /desktop-icons/file-icons/show-home bool false
+  xset_ xfce4-desktop /desktop-icons/file-icons/show-trash bool true
+  xset_ xfce4-desktop /desktop-icons/file-icons/show-filesystem bool false
+  xset_ xfce4-desktop /desktop-icons/icon-size uint 48
+  ok "壁纸：$(basename "$img")；桌面只显示回收站"
+}
+
+# Win11 浅色任务栏样式：写进 ~/.config/gtk-3.0/gtk.css 末尾（覆盖前面的同名规则，原有内容不删）
+apply_taskbar_css() {
+  local css="$HOME/.config/gtk-3.0/gtk.css" b='/* >>> l4c:win11-taskbar */' e='/* <<< l4c:win11-taskbar */'
+  mkdir -p "${css%/*}"; touch "$css"; cp -n "$css" "$css.l4c-bak"
+  awk -v b="$b" -v e="$e" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' "$css" >"$css.tmp"
+  { cat "$css.tmp"; echo "$b"; cat "$L4C_ROOT/config/xfce/l4c-win11-taskbar.css"; echo "$e"; } >"$css"
+  rm -f "$css.tmp"
+  ok "任务栏：Win11 浅色样式（按钮无边框，悬停淡白底）"
 }
 
 # 屏保 / 锁屏：和 Win11 一样，空闲后直接黑屏（不放动画，省电），唤醒要输密码
@@ -293,13 +324,53 @@ apply_menu() {
 }
 
 # 只换外观（主题、壁纸、锁屏、通知、开始菜单、合成器），不动任务栏和快捷键
+# 黄色文件夹图标（Fluent 的 yellow 配色）。装在用户目录，不需要管理员权限，约 10 MB
+install_yellow_icons() {
+  first_existing icons Fluent-yellow >/dev/null && return 0
+  have git || return 0
+  confirm "安装黄色文件夹图标（和 Win11 资源管理器一样，约 10 MB）？" y || return 0
+  local dir; dir=$(mktemp -d)
+  if git clone -q --depth 1 https://github.com/vinceliuice/Fluent-icon-theme "$dir/icons" &&
+     (cd "$dir/icons" && ./install.sh -d "$HOME/.local/share/icons" yellow >/dev/null 2>&1); then
+    ok "黄色文件夹图标已安装"
+    # 文件管理器的应用图标也换成黄色文件夹（Win11 资源管理器的样子；Fluent 默认是紫色）
+    local t="$HOME/.local/share/icons/Fluent-yellow/scalable" n
+    for n in thunar org.xfce.thunar system-file-manager; do
+      [[ -e $t/places/folder.svg ]] && ln -sf ../places/folder.svg "$t/apps/$n.svg"
+    done
+    gtk-update-icon-cache -qf "$HOME/.local/share/icons/Fluent-yellow" 2>/dev/null || true
+  else
+    warn "黄色文件夹图标安装失败，继续用默认颜色"
+  fi
+  rm -rf "$dir"
+}
+
+# 托盘：电池只显示图标（Wi-Fi 等托盘图标用 Fluent-*-light 图标主题里给浅色任务栏的深色版）
+apply_tray() {
+  xset_ xfce4-power-manager /xfce4-power-manager/show-panel-label int 0
+  if pgrep -x nm-applet >/dev/null; then pkill -x nm-applet; (setsid env LANG="$SESSION_LANG" nm-applet >/dev/null 2>&1 &); fi
+  ok "托盘：深色图标（适合浅色任务栏），电池只显示图标"
+}
+
+# 桌面图标从左上角开始排（清掉旧的图标位置记录）
+reset_desktop_icons() {
+  ls "$HOME"/.config/xfce4/desktop/icons.screen*.yaml >/dev/null 2>&1 || return 0
+  xfdesktop --quit >/dev/null 2>&1 || true; sleep 1
+  rm -f "$HOME"/.config/xfce4/desktop/icons.screen*.yaml "$HOME"/.config/xfce4/desktop/icons.screen*.rc
+  (setsid env LANG="$SESSION_LANG" xfdesktop >/dev/null 2>&1 &)
+}
+
 apply_look() {
+  install_yellow_icons
+  apply_taskbar_css
   apply_theme
   apply_compositor
   apply_wallpaper
   apply_lockscreen
   apply_notify
   apply_menu
+  apply_tray
+  reset_desktop_icons
 }
 
 apply_fcitx() {
@@ -360,12 +431,14 @@ apply_panel() {
   pkill -x xfconfd 2>/dev/null || true
   sleep 1
   mkdir -p "$XFCONF_DIR" "$PANEL_DIR"
+  local old_pinned; old_pinned=$(sed -n 's/^pinned=//p' "$PANEL_DIR"/docklike-*.rc 2>/dev/null | head -1)
   rm -f "$PANEL_DIR"/docklike-*.rc "$PANEL_DIR"/whiskermenu-*.rc
 
   local pinned=""
   for p in firefox thunar xfce4-terminal mousepad; do
     [[ -f /usr/share/applications/$p.desktop ]] && pinned+="/usr/share/applications/$p.desktop;"
   done
+  [[ -n $old_pinned ]] && pinned=$old_pinned   # 保留用户自己固定的应用
   if [[ $tasks == docklike ]]; then
     cat >"$PANEL_DIR/docklike-3.rc" <<EOF
 [user]
@@ -375,8 +448,23 @@ showPreviews=true
 noWindowsListIfSingle=true
 onlyDisplayScreen=false
 indicatorOrientation=0
+indicatorStyle=3
+inactiveIndicatorStyle=3
+indicatorColorFromTheme=false
+indicatorColor=rgb(0,95,184)
+inactiveColor=rgb(128,128,128)
 EOF
   fi
+  # 开始按钮旁边的“搜索”按钮（打开开始菜单，光标直接在搜索框里）
+  mkdir -p "$PANEL_DIR/launcher-11"
+  cat >"$PANEL_DIR/launcher-11/l4c-search.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=搜索
+Comment=搜索应用、文件和设置
+Icon=system-search
+Exec=xfce4-popup-whiskermenu
+EOF
 
   cat >"$XFCONF_DIR/xfce4-panel.xml" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -385,19 +473,25 @@ EOF
   <property name="configver" type="int" value="2"/>
   <property name="panels" type="array">
     <value type="int" value="1"/>
-    <property name="dark-mode" type="bool" value="true"/>
+    <property name="dark-mode" type="bool" value="false"/>
     <property name="panel-1" type="empty">
       <property name="position" type="string" value="p=8;x=0;y=0"/>
       <property name="length" type="uint" value="100"/>
       <property name="position-locked" type="bool" value="true"/>
-      <property name="size" type="uint" value="40"/>
+      <property name="size" type="uint" value="48"/>
       <property name="icon-size" type="uint" value="24"/>
       <property name="enable-struts" type="bool" value="true"/>
+      <!-- Win11 浅色半透明任务栏：底色由面板自己画（CSS 会叠画到插件小窗口上） -->
+      <property name="background-style" type="uint" value="1"/>
+      <property name="background-rgba" type="array">
+        <value type="double" value="0.933"/><value type="double" value="0.945"/>
+        <value type="double" value="0.965"/><value type="double" value="0.88"/>
+      </property>
       <property name="plugin-ids" type="array">
-        <value type="int" value="1"/><value type="int" value="2"/><value type="int" value="3"/>
-        <value type="int" value="4"/><value type="int" value="5"/><value type="int" value="6"/>
-        <value type="int" value="7"/><value type="int" value="8"/><value type="int" value="9"/>
-        <value type="int" value="10"/>
+        <value type="int" value="1"/><value type="int" value="2"/><value type="int" value="11"/>
+        <value type="int" value="3"/><value type="int" value="4"/><value type="int" value="5"/>
+        <value type="int" value="6"/><value type="int" value="7"/><value type="int" value="9"/>
+        <value type="int" value="8"/><value type="int" value="10"/>
       </property>
     </property>
   </property>
@@ -414,6 +508,10 @@ EOF
       <property name="menu-width" type="int" value="600"/>
       <property name="menu-height" type="int" value="520"/>
     </property>
+    <property name="plugin-11" type="string" value="launcher">
+      <property name="items" type="array"><value type="string" value="l4c-search.desktop"/></property>
+      <property name="show-label" type="bool" value="false"/>
+    </property>
     <property name="plugin-3" type="string" value="$tasks">
       <property name="show-labels" type="bool" value="false"/>
       <property name="grouping" type="uint" value="1"/>
@@ -425,11 +523,23 @@ EOF
     </property>
     <property name="plugin-5" type="string" value="systray">
       <property name="square-icons" type="bool" value="true"/>
+      <property name="icon-size" type="int" value="16"/>
+      <property name="hidden-items" type="array">
+        <value type="string" value="blueman"/><value type="string" value="CopyQ_copyq"/>
+        <value type="string" value="remmina-icon"/><value type="string" value="zerotier-gui"/>
+        <value type="string" value="pamac-tray"/><value type="string" value="proton-vpn-app"/>
+      </property>
+      <property name="hidden-legacy-items" type="array">
+        <value type="string" value="pamac-tray"/><value type="string" value="clipman 剪贴板管理器"/>
+        <value type="string" value="fcitx5 tray window"/><value type="string" value="blueman"/>
+      </property>
     </property>
     <property name="plugin-6" type="string" value="pulseaudio">
       <property name="enable-keyboard-shortcuts" type="bool" value="true"/>
     </property>
-    <property name="plugin-7" type="string" value="power-manager-plugin"/>
+    <property name="plugin-7" type="string" value="power-manager-plugin">
+      <property name="show-panel-label" type="int" value="0"/>
+    </property>
     <property name="plugin-8" type="string" value="notification-plugin"/>
     <property name="plugin-9" type="string" value="clock">
       <property name="mode" type="uint" value="2"/>
@@ -442,7 +552,7 @@ EOF
   </property>
 </channel>
 EOF
-  (setsid xfce4-panel >/dev/null 2>&1 &)
+  (setsid env LANG="$SESSION_LANG" xfce4-panel >/dev/null 2>&1 &)
   ok "已设置 Windows 11 风格任务栏：居中开始菜单 + 固定应用（Win+1…9 打开第几个），右侧托盘和时钟"
 }
 
@@ -451,13 +561,13 @@ ARGS=()
 while (($#)); do
   case $1 in
     --install-theme) install_theme_system; exit 0 ;;
-    --system-look) install_system_look; exit 0 ;;
+    --system-look) [[ ${2:-} == --win-wallpaper ]] && WIN_WALL=${3:?需要 Windows 壁纸目录}; install_system_look; exit 0 ;;
     --look) DO_LOOK_ONLY=1 ;;
     --restore) restore_xfce "${2:?需要备份目录}"; exit 0 ;;
     --theme) DO_THEME=1 ;;
     --no-panel) DO_PANEL=0 ;;
     --first-login) FIRST_LOGIN=1; L4C_YES=1 ;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) ARGS+=("$1") ;;
   esac
   shift
@@ -480,6 +590,9 @@ if ((${DO_LOOK_ONLY:-0})); then
   info "应用 Windows 11 外观"
   backup_xfce
   apply_look
+  if confirm "把任务栏重建为 Win11 布局（48 高、搜索按钮、托盘收进 ^）？已固定的应用会保留" y; then
+    apply_panel; sleep 2; apply_menu
+  fi
   pgrep -x picom >/dev/null && ((${USE_PICOM:-0})) && { pkill -USR1 -x picom 2>/dev/null || true; }   # 让 picom 重新读配置
   ok "完成！登录界面在注销或重启后可见。"
   exit 0
