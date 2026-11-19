@@ -328,18 +328,67 @@ step_ram_apps() {
     esac
     off+=("$n|$reason")
   done
-  ((${#off[@]})) || return 0
-  echo "可以关掉的开机自启动程序（程序本身不删，随时能手动打开）："
-  for e in "${off[@]}"; do echo "  • ${e%%|*}：${e#*|}"; done
-  confirm "关掉这些开机自启动？" y || return 0
+  if ((${#off[@]})); then
+    echo "可以关掉的开机自启动程序（程序本身不删，随时能手动打开）："
+    for e in "${off[@]}"; do echo "  • ${e%%|*}：${e#*|}"; done
+    confirm "关掉这些开机自启动？" y && ram_autostart_off "$user" "$ad" "${off[@]}"
+  fi
+  ram_panel_internal "$user" "$home"
+  ram_desktop_services "$user" "$home"
+}
+
+ram_autostart_off() { # 用户 自启动目录 「名称|原因」…
+  local user=$1 ad=$2 e n; shift 2
   mkdir -p "$ad"
-  for e in "${off[@]}"; do
+  for e in "$@"; do
     n=${e%%|*}
     { grep -v '^Hidden=' "$ad/$n.desktop" 2>/dev/null || grep -v '^Hidden=' /etc/xdg/autostart/"$n".desktop; echo "Hidden=true"; } >"$ad/$n.desktop.tmp"
     mv -f "$ad/$n.desktop.tmp" "$ad/$n.desktop"
   done
   chown -R "$user:" "$ad"
-  ok "已关掉 ${#off[@]} 个开机自启动（下次登录生效）"
+  ok "已关掉 $# 个开机自启动（下次登录生效）"
+}
+
+# 任务栏插件默认每个单独一个进程（wrapper-2.0，每个约 11 MB）。在用户目录放一份 X-XFCE-Internal=TRUE 的插件说明文件，
+# 插件就改在任务栏进程里运行（实测这台机器有 7 个）。代价：某个插件崩溃会连带任务栏重启一下
+ram_panel_internal() {
+  local user=$1 home=$2 d="$2/.local/share/xfce4/panel/plugins" f n cnt=0
+  local ext=()
+  for f in /usr/share/xfce4/panel/plugins/*.desktop; do
+    grep -q '^X-XFCE-Internal=TRUE' "$f" && continue
+    n=$(sed -n 's/^X-XFCE-Module=//p' "$f"); [[ -n $n ]] || continue
+    ext+=("$f")
+  done
+  ((${#ext[@]})) || return 0
+  confirm "任务栏插件改在任务栏进程里运行（${#ext[@]} 个插件，少 ${#ext[@]} 个进程，约省 $((${#ext[@]} * 8)) MB；插件崩溃会连带任务栏重启一下）？" y || return 0
+  mkdir -p "$d"
+  for f in "${ext[@]}"; do
+    { grep -v '^X-XFCE-Internal=' "$f"; echo "X-XFCE-Internal=TRUE"; } >"$d/${f##*/}"
+    cnt=$((cnt + 1))
+  done
+  chown -R "$user:" "$home/.local/share/xfce4"
+  ok "任务栏插件：$cnt 个改为在任务栏进程里运行（重新登录后生效）"
+}
+
+# 用不到的桌面后台服务：无障碍总线（读屏软件用）、iPhone / 数码相机的自动识别。
+# 用 ~/.config/systemd/user 里指向 /dev/null 的同名文件屏蔽（删掉这些文件即可恢复）
+ram_desktop_services() {
+  local user=$1 home=$2 u="$2/.config/systemd/user" s n=0
+  confirm "关掉无障碍总线（不用读屏软件时）和 iPhone、数码相机的自动识别服务（约省 15 MB）？" y || return 0
+  mkdir -p "$u"
+  for s in at-spi-dbus-bus.service gvfs-afc-volume-monitor.service gvfs-gphoto2-volume-monitor.service; do
+    [[ -e /usr/lib/systemd/user/$s ]] || continue
+    ln -sf /dev/null "$u/$s"; n=$((n + 1))
+  done
+  chown -R "$user:" "$home/.config/systemd"
+  # GTK 程序启动时也会尝试连无障碍总线，告诉它们不用连
+  set_block /etc/environment a11y $'NO_AT_BRIDGE=1\nGTK_A11Y=none'
+  local ad="$home/.config/autostart"
+  if [[ -f /etc/xdg/autostart/at-spi-dbus-bus.desktop ]]; then
+    { grep -v '^Hidden=' /etc/xdg/autostart/at-spi-dbus-bus.desktop; echo "Hidden=true"; } >"$ad/at-spi-dbus-bus.desktop"
+    chown "$user:" "$ad/at-spi-dbus-bus.desktop"
+  fi
+  ok "已关掉 $n 个桌面后台服务和无障碍总线（重新登录后生效）"
 }
 
 step_services() {
