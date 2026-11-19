@@ -15,7 +15,8 @@
 ### 性能、内存、存储
 
 - 透明大页 madvise、MGLRU `min_ttl_ms=1000`（ChromeOS 同款）；earlyoom 认识 QQ / Edge / 哔哩哔哩
-- `l4c optimize --ram`：精简开机常驻程序（Proton VPN 后台改为按需启动、重复的剪贴板管理器等），实测约省 270 MB
+- `l4c optimize --ram`：精简开机常驻程序（Proton VPN 后台改为按需启动、重复的剪贴板管理器等），实测可用内存多 55 MB；
+  Proton VPN 后台用过一次就会常驻（峰值约 250 MB），现在不再开机常驻
 - 开机不再等待联网（省 4.4 秒）；GRUB 隐藏菜单等待 1 秒；关闭 man-db 定时任务和空的 cronie
 - 兜底 swap 改为 1G；光标包只留一个变体，删除用不到的主题；全新安装后硬盘占用从 93% 降到约 50%
 

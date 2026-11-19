@@ -226,12 +226,13 @@ step_input() {
   ok "触控板已设置（重新登录后生效）"
 }
 
-# 开机常驻程序瘦身：4G 内存里，开机就常驻的程序能省则省（实测这台机器约 270 MB）
+# 开机常驻程序瘦身：4G 内存里，开机就常驻的程序能省则省
+# （实测这台机器可用内存多出约 55 MB；Proton VPN 后台用过一次就会一直占着，峰值约 250 MB）
 step_ram_apps() {
-  # Proton VPN 的后台服务支持 D-Bus 按需启动：关掉开机常驻，打开 VPN 程序时会自动拉起（约 160 MB）
+  # Proton VPN 的后台服务支持 D-Bus 按需启动：关掉开机常驻，打开 VPN 程序时会自动拉起
   if systemctl is-enabled proton.VPN.service >/dev/null 2>&1 &&
      compgen -G '/usr/share/dbus-1/system-services/me.proton.vpn.*.service' >/dev/null &&
-     confirm "Proton VPN 后台服务改为用到时才启动（开机少占约 160 MB 内存，用 VPN 时不受影响）？" y; then
+     confirm "Proton VPN 后台服务改为用到时才启动（平时不常驻，用过 VPN 后它会占到约 250 MB；用 VPN 时不受影响）？" y; then
     systemctl disable proton.VPN.service >/dev/null 2>&1
     [[ $L4C_CHROOT == 1 ]] || systemctl stop proton.VPN.service 2>/dev/null || true
     ok "Proton VPN 后台服务：改为按需启动"
@@ -243,9 +244,9 @@ step_ram_apps() {
   local ad="$home/.config/autostart" off=() n f c e reason own
   # 名称|原因（只在条件满足时关）
   local -a cand=(
-    "copyq|和 Xfce 自带的剪贴板历史（Win+V）重复，约 60 MB"
-    "remmina-applet|远程桌面的托盘图标，不影响使用远程桌面，约 20 MB"
-    "msm_notifier|Manjaro 设置提醒（新内核/语言包），约 14 MB"
+    "copyq|和 Xfce 自带的剪贴板历史（Win+V）重复"
+    "remmina-applet|远程桌面的托盘图标，不影响使用远程桌面"
+    "msm_notifier|Manjaro 设置提醒（新内核/语言包）"
     "xiccd|屏幕颜色配置守护进程，Chromebook 屏幕用不到"
     "xcape|单按 Win 键开菜单，Xfce 快捷键已经做了，重复"
     "picom|系统自带的 picom 自启动，用户目录里已经有自己的 picom"
