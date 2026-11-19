@@ -154,7 +154,7 @@ function Invoke-Request($ctx, $token) {
   if ($rest.Count -eq 1 -and $rest[0] -eq 'l4c.tar.gz' -and $req.HttpMethod -eq 'GET') {
     Send-File $ctx (Get-RepoTarball) 'application/gzip'; return
   }
-  if ($rest[0] -notmatch '^l4c-backup-[A-Za-z0-9._-]+$') { Send-Text $ctx 400 "bad package name`n"; return }
+  if ($rest[0] -notmatch '^l4c-(backup|scan)-[A-Za-z0-9._-]+$') { Send-Text $ctx 400 "bad package name`n"; return }
   $pkgDir = Join-Path $Root $rest[0]
   $rel = (@($rest | Select-Object -Skip 1)) -join '\'
 
@@ -211,6 +211,9 @@ function Start-TransferServer {
   Write-Host ''
   Write-Host '  ② 安装新系统时取回数据：在安装器里选择「w) 从 Windows 电脑获取」，输入上面的地址' -ForegroundColor Cyan
   Write-Host "     已装好的系统也可以：sudo l4c import $a/迁移包名称"
+  Write-Host ''
+  Write-Host '  ③ 发送设备扫描报告（硬件、存储、eMMC 健康）：' -ForegroundColor Cyan
+  Write-Host "      l4c scan --send $a"
   Write-Host ''
   Write-Host "  迁移包保存在：$Root（剩余空间 $(Format-Size (Get-PSDrive ($Root.Substring(0,1))).Free)）"
   Write-Host '  按 Q 键停止服务（停止后会自动关闭防火墙端口）' -ForegroundColor Yellow
@@ -418,6 +421,138 @@ function New-InstallUsb {
 "@
 }
 
+# ---------------------------------------------------------- ChromeOS ----
+$ChromeOsDir = Join-Path $Root 'ChromeOS镜像'
+
+function Save-Download($url, $file) {
+  Say "下载 $url"
+  try { Start-BitsTransfer -Source $url -Destination $file -DisplayName 'ChromeOS 镜像' -Description $file }
+  catch {
+    Warn "BITS 下载失败（$($_.Exception.Message)），改用普通下载"
+    $old = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+    try { Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing } finally { $ProgressPreference = $old }
+  }
+  Ok "已下载 $(Format-Size (Get-Item -LiteralPath $file).Length)"
+}
+
+function Expand-Image($zip, $sha1) {
+  $dst = [IO.Path]::ChangeExtension($zip, $null).TrimEnd('.')
+  if ($sha1) {
+    $h = (Get-FileHash -LiteralPath $zip -Algorithm SHA1).Hash.ToLower()
+    if ($h -eq $sha1.ToLower()) { Ok 'SHA1 校验通过（压缩包）' }
+  }
+  Say '解压（约 1~3 分钟）……'
+  Expand-Archive -LiteralPath $zip -DestinationPath $dst -Force
+  $bin = Get-ChildItem -LiteralPath $dst -Filter '*.bin' | Select-Object -First 1
+  if (-not $bin) { Warn '压缩包里没有找到 .bin 镜像'; return $null }
+  if ($sha1) {
+    $h = (Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA1).Hash.ToLower()
+    if ($h -eq $sha1.ToLower()) { Ok 'SHA1 校验通过（镜像）' }
+  }
+  Remove-Item -LiteralPath $zip -Force
+  return $bin.FullName
+}
+
+function Show-WriteGuide($bin, [bool]$flex) {
+  Write-Host @"
+
+  镜像已准备好：$bin
+
+  写入 U 盘（会清空 U 盘，建议 8G 以上）：
+    方法一（官方）：在 Chrome 浏览器安装「Chromebook 恢复实用工具」
+        https://chromewebstore.google.com/detail/chromebook-recovery-utili/pocpnlppkickgojjlmhdmidojbmbodfm
+      打开后点右上角齿轮 → 使用本地映像 → 选择上面的 .bin 文件 → 选择 U 盘
+    方法二：用 Rufus 选择这个 .bin 文件写入（提示时选 DD 模式）
+
+"@
+  if ($flex) {
+    Write-Host '  安装：Chromebook 插入 U 盘，开机按 Esc 选择 U 盘启动 → Install ChromeOS Flex（会清空硬盘）'
+  } else {
+    Write-Host '  安装：先在 Chromebook 上恢复原厂固件（sudo l4c chromeos firmware），'
+    Write-Host '        然后关机，按住 Esc + 刷新键再按电源键进入恢复模式，插入 U 盘（会清空硬盘）'
+  }
+  Start-Process explorer.exe (Split-Path -Parent $bin)
+}
+
+function Get-FlexImage {
+  New-Item -ItemType Directory -Force -Path $ChromeOsDir | Out-Null
+  $zip = Join-Path $ChromeOsDir 'chromeos-flex.bin.zip'
+  Save-Download 'https://dl.google.com/chromeos-flex/images/latest.bin.zip' $zip
+  $bin = Expand-Image $zip $null
+  if ($bin) { Show-WriteGuide $bin $true }
+}
+
+function Get-StockImage {
+  $board = ''
+  $p = Get-Packages
+  if ($p.Count) { $board = (Read-Manifest $p[0].FullName)['BOARD'] }
+  $in = Read-Host "Chromebook 主板代号（直接回车 = $(if ($board) { $board } else { 'YAVILLA' })）"
+  if ($in) { $board = $in } elseif (-not $board) { $board = 'YAVILLA' }
+  $board = $board.ToUpper()
+  Say "查询 Google 官方恢复镜像列表（$board）"
+  $list = Invoke-RestMethod -Uri 'https://dl.google.com/dl/edgedl/chromeos/recovery/recovery2.json' -UseBasicParsing
+  $rows = @($list | Where-Object { ("$($_.hwidmatch) $($_.name) $($_.file)").ToUpper().Contains($board) })
+  if ($rows.Count -eq 0) { Warn "没有找到 $board 的镜像。请用「Chromebook 恢复实用工具」按型号选择。"; return }
+  for ($i = 0; $i -lt $rows.Count; $i++) {
+    Write-Host ('  {0}) {1}  版本 {2}  {3}' -f ($i + 1), $rows[$i].name, $rows[$i].version, (Format-Size ([double]$rows[$i].zipfilesize)))
+  }
+  $n = 1
+  if ($rows.Count -gt 1) { [void][int]::TryParse((Read-Host '选择编号'), [ref]$n) }
+  if ($n -lt 1 -or $n -gt $rows.Count) { Warn '无效选择'; return }
+  $r = $rows[$n - 1]
+  New-Item -ItemType Directory -Force -Path $ChromeOsDir | Out-Null
+  $zip = Join-Path $ChromeOsDir (Split-Path -Leaf ([Uri]$r.url).AbsolutePath)
+  Save-Download $r.url $zip
+  $bin = Expand-Image $zip $r.sha1
+  if ($bin) { Show-WriteGuide $bin $false }
+}
+
+function Invoke-ChromeOsMenu {
+  Write-Host @'
+
+  装回 ChromeOS 有两条路线：
+    A. ChromeOS Flex：不用改固件，U 盘直接安装。没有安卓应用 / Play 商店，Google 未认证此机型。
+    B. 原厂 ChromeOS：功能完整（安卓应用、自动更新），但要先在 Chromebook 上恢复原厂固件，
+       需要当初刷 UEFI 固件时保存的原厂固件备份（*stock*.rom）。
+
+  1) 下载 ChromeOS Flex 镜像
+  2) 下载本机型原厂 ChromeOS 恢复镜像
+  3) 查找迁移包里的原厂固件备份
+'@
+  switch (Read-Host '请选择') {
+    '1' { Get-FlexImage }
+    '2' { Get-StockImage }
+    '3' {
+      $found = @(Get-ChildItem -LiteralPath $Root -Recurse -File -Filter '*.rom' -ErrorAction SilentlyContinue)
+      if ($found.Count) { $found | ForEach-Object { Ok $_.FullName }; Warn '请把这些文件另外备份一份（例如网盘），丢失后无法恢复原厂 ChromeOS' }
+      else { Warn '迁移包里没有原厂固件备份。可以在 Chromebook 上运行 l4c chromeos check 查找' }
+    }
+  }
+}
+
+# ---------------------------------------------------------- 清除残留 ----
+function Remove-PackageData {
+  Warn '迁移包里有 Wi-Fi 密码、浏览器数据等隐私信息。新系统确认一切正常后，建议从这台电脑删除。'
+  $p = Select-Package; if (-not $p) { return }
+  $roms = @(Get-ChildItem -LiteralPath $p.FullName -Recurse -File -Filter '*.rom' -ErrorAction SilentlyContinue)
+  if ($roms.Count) {
+    Warn '这个迁移包里有原厂固件备份（以后装回原厂 ChromeOS 需要），将先移到单独的文件夹保留。'
+    $keep = Join-Path $Root '原厂固件备份（请保留）'
+    New-Item -ItemType Directory -Force -Path $keep | Out-Null
+    $roms | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $keep -Force }
+    Ok "已保留到 $keep"
+  }
+  if ((Read-Host "确认删除 $($p.Name)？输入 DELETE") -ne 'DELETE') { Warn '已取消'; return }
+  Remove-Item -LiteralPath $p.FullName -Recurse -Force
+  $browse = Join-Path $Root ($p.Name + '-浏览')
+  if (Test-Path -LiteralPath $browse) { Remove-Item -LiteralPath $browse -Recurse -Force }
+  Get-ChildItem -LiteralPath $env:TEMP -Filter 'l4c-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  Ok '已删除'
+  if ((Read-Host '再覆盖一遍磁盘空闲空间，让删除的文件无法被恢复？（机械硬盘需要很久，固态硬盘一般不需要）(y/N)') -match '^[Yy]') {
+    & cipher.exe "/w:$Root"
+  }
+}
+
 # ---------------------------------------------------------- 主菜单 ------
 while ($true) {
   Clear-Host
@@ -433,7 +568,9 @@ while ($true) {
   Write-Host '  4) 转换：把 Windows 的 Wi-Fi、文件夹加入迁移包'
   Write-Host '  5) 在 Windows 上浏览迁移包里的文件'
   Write-Host '  6) 制作 Chromebook 安装 U 盘'
-  Write-Host '  7) 打开迁移包所在文件夹'
+  Write-Host '  7) 打开迁移包 / 设备扫描报告所在文件夹'
+  Write-Host '  8) ChromeOS 恢复工具（下载 Flex / 原厂恢复镜像）'
+  Write-Host '  9) 删除迁移包，清除这台电脑上的残留数据'
   Write-Host '  0) 退出'
   Write-Host ''
   $c = Read-Host '请选择'
@@ -446,6 +583,8 @@ while ($true) {
       '5' { Open-PackageFiles; Pause-Key }
       '6' { New-InstallUsb; Pause-Key }
       '7' { Start-Process explorer.exe $Root }
+      '8' { Invoke-ChromeOsMenu; Pause-Key }
+      '9' { Remove-PackageData; Pause-Key }
       '0' { exit }
     }
   } catch {

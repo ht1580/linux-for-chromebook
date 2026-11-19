@@ -65,6 +65,17 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 
 4. 按提示选择迁移包、硬盘、用户名，安装器自动完成分区、安装、键盘声卡适配、导入数据
 
+### 清除残存信息、装回 ChromeOS
+
+- `l4c wipe traces` 清除使用痕迹；全新安装前自动安全擦除整块 eMMC；`l4c wipe efi` 删除旧启动项；Windows 工具可删除迁移包
+- `l4c chromeos check` 给出装回 ChromeOS 的路线：**ChromeOS Flex**（不用动固件）或**原厂 ChromeOS**（先恢复原厂固件）；Windows 工具可下载对应镜像
+- 详见 **[docs/chromeos.md](docs/chromeos.md)**
+
+### 扫描设备、远程连接
+
+- `l4c scan` 生成详细报告：机型固件、内存占用、eMMC 健康度（寿命估计）、哪些目录/软件包最占空间、显卡解码、声卡、键盘、电池健康、启动耗时、错误日志
+- `l4c remote on` 临时开启 SSH，方便在 Windows 电脑上（例如用 Claude Code）连接这台 Chromebook 排查和继续优化；`l4c remote off` 关闭
+
 ---
 
 ## 做了哪些优化
@@ -162,6 +173,10 @@ l4c desktop [--theme]     Windows 11 风格桌面
 l4c theme                 安装 Fluent 主题
 l4c undo-desktop <目录>   恢复修改前的桌面
 l4c install               全新安装（在启动 U 盘里）
+l4c scan                  生成详细设备报告
+l4c remote on|off         临时开启 / 关闭 SSH 远程连接
+l4c wipe traces|efi|disk  清除残存信息
+l4c chromeos check        装回 ChromeOS 的路线检查（还有 images / backup-firmware / firmware）
 l4c status                查看内存/存储状态
 l4c info                  查看机型和固件
 ```
@@ -174,6 +189,10 @@ lib/common.sh              公共函数
 setup/optimize.sh          内存、存储、eMMC、视频解码优化
 setup/chromebook.sh        键盘映射、声卡、硬件信息
 setup/desktop-win11.sh     Windows 11 风格桌面和快捷键
+setup/scan.sh              设备扫描报告
+setup/remote.sh            临时 SSH 远程连接
+setup/wipe.sh              清除残存信息、整盘安全擦除
+setup/chromeos.sh          装回 ChromeOS（Flex / 原厂）
 migrate/export.sh          转换程序：导出迁移包（U 盘 / 局域网发送）
 migrate/import.sh          导入程序：还原迁移包（U 盘 / 局域网边下载边导入）
 windows/启动工具.bat        Windows 工具：接收、校验、转换、回传迁移包，制作安装 U 盘
@@ -182,7 +201,8 @@ install/install.sh         全新安装器（在 Manjaro 启动 U 盘里运行�
 install/chroot-setup.sh    安装器在新系统里执行的配置步骤
 install/packages/*.txt     全新安装的软件包列表（可自行增删）
 config/                    各种配置文件
-docs/                      快捷键表、迁移说明、Windows 流程
+docs/                      快捷键表、迁移说明、Windows 流程、ChromeOS
+CLAUDE.md                  给后续 Claude Code 会话的说明（设备信息、待实机验证清单）
 ```
 
 ## 测试情况

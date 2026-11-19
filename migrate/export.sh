@@ -197,6 +197,16 @@ if have pacman; then
   fi
 fi
 
+# 5b. 原厂固件备份（以后装回原厂 ChromeOS 需要），单独放一份，方便在 Windows 上找到
+mapfile -t ROMS < <(find "$HOME" -maxdepth 3 -type f -iname '*stock*.rom' 2>/dev/null || true)
+if ((${#ROMS[@]})); then
+  mkdir -p "$DEST/firmware"
+  cp -n "${ROMS[@]}" "$DEST/firmware/"
+  ok "原厂固件备份：${#ROMS[@]} 个（firmware/ 目录，请一直保留）"
+elif grep -qi mrchromebox /sys/class/dmi/id/bios_version 2>/dev/null; then
+  warn "没有在主目录里找到原厂固件备份（*stock*.rom）。如果它在 U 盘上，请妥善保存，以后装回原厂 ChromeOS 需要它。"
+fi
+
 # 6. 个人文件和设置（最大的一项，放在最后）
 info "打包$([[ -n $SEND ]] && echo '并发送')个人文件和设置（可能需要几分钟到几十分钟）……"
 mapfile -t EXARGS < <(tar_excludes)

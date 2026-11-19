@@ -108,13 +108,30 @@ echo "  电脑名称: $HOSTNAME_    用户: $USERNAME_    时区: $TIMEZONE_    
 echo "  内核:     $KERNEL       桌面: Xfce（Win11 风格: $WIN11）"
 echo "  迁移包:   ${BACKUP:-无}"
 echo
+# 以后想装回原厂 ChromeOS 需要原厂固件备份；硬盘清空前提醒一次
+if grep -qi mrchromebox /sys/class/dmi/id/bios_version 2>/dev/null; then
+  has_fw=0
+  if [[ $BACKUP =~ ^https?:// ]]; then curl -fsS "$BACKUP/" 2>/dev/null | grep -q '^firmware/' && has_fw=1
+  elif [[ -n $BACKUP && -d $BACKUP/firmware ]]; then has_fw=1
+  fi
+  find /run/media -maxdepth 5 -iname '*stock*.rom' 2>/dev/null | grep -q . && has_fw=1
+  if ((has_fw == 0)); then
+    warn "没有在迁移包或 U 盘上找到原厂固件备份（*stock*.rom）。"
+    warn "如果以后想装回原厂 ChromeOS（含安卓应用），需要这个备份；只装 ChromeOS Flex 则不需要。"
+    confirm "仍然继续安装？" y || die "已取消。可以先在旧系统里运行 l4c chromeos backup-firmware"
+  fi
+fi
 [[ $(ask "确认清空 $DISK 并安装？请输入大写 YES" "") == YES ]] || die "已取消，硬盘未做任何改动"
+WIPE=n; confirm "安装前彻底擦除整块硬盘的旧数据（旧系统和个人文件将无法被恢复，约 1~10 分钟）？" y && WIPE=y
 L4C_YES_SAVED=$L4C_YES
 
 # ------------------------------------------------------------ 5. 分区 ----
-info "分区并格式化 $DISK"
 umount -R "$DISK"* 2>/dev/null || true
 swapoff -a 2>/dev/null || true
+if [[ $WIPE == y ]]; then
+  L4C_WIPE_CONFIRMED=1 bash "$L4C_ROOT/setup/wipe.sh" disk "$DISK"
+fi
+info "分区并格式化 $DISK"
 wipefs -af "$DISK" >/dev/null
 sfdisk --wipe always --label gpt "$DISK" >/dev/null <<EOF
 ,512M,U
@@ -134,6 +151,7 @@ mount -o "$MOUNT_OPTS,subvol=@log" "$ROOT" "$MNT/var/log"
 mount -o "noatime,subvol=@swap" "$ROOT" "$MNT/swap"
 mount "$ESP" "$MNT/boot/efi"
 ok "btrfs（zstd 压缩）分区完成"
+L4C_YES=1 bash "$L4C_ROOT/setup/wipe.sh" efi || warn "清理旧启动项失败，不影响安装"
 
 # ------------------------------------------------------------ 6. 安装 ----
 info "准备软件源"

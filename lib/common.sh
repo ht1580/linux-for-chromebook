@@ -18,7 +18,7 @@ ok()   { printf '%s  ✓%s %s\n' "$C_G" "$C_0" "$*"; }
 warn() { printf '%s  !%s %s\n' "$C_Y" "$C_0" "$*" >&2; }
 die()  { printf '%s  ✗ %s%s\n' "$C_R" "$*" "$C_0" >&2; exit 1; }
 # 任何未处理的错误都打印出错位置，方便反馈问题
-trap 'printf "%s  ✗ 出错：%s 第 %s 行：%s%s\n" "$C_R" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND" "$C_0" >&2' ERR
+trap '((BASH_SUBSHELL)) || printf "%s  ✗ 出错：%s 第 %s 行：%s%s\n" "$C_R" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND" "$C_0" >&2' ERR
 
 # confirm "问题" [y|n]  —— 返回 0 表示“是”
 confirm() {

@@ -25,6 +25,17 @@ linux-for-chromebook $L4C_VERSION
     undo-desktop <备份目录> 恢复修改前的桌面设置
   全新安装
     install                 在 Manjaro 启动 U 盘里运行，全新安装优化版系统
+  设备扫描与远程
+    scan [--send <地址>]    生成详细的设备报告（硬件、eMMC 健康、存储、电池……）
+    remote on|off|status    临时开启 SSH，让 Windows 上的 Claude Code 等连接本机
+  清除与恢复
+    wipe traces             清除使用痕迹（历史、缓存、日志、本工具备份……）
+    wipe efi                删除失效的 UEFI 启动项
+    wipe disk <硬盘>        彻底擦除整块硬盘（仅限启动 U 盘里运行）
+    chromeos check          检查固件状态，给出装回 ChromeOS 的路线
+    chromeos images         列出本机型原厂 ChromeOS 恢复镜像
+    chromeos backup-firmware  备份原厂固件文件到 U 盘
+    chromeos firmware       运行 MrChromebox 固件工具（恢复原厂固件）
   其他
     status                  查看内存、压缩、存储状态
     info                    查看机型和固件信息
@@ -66,6 +77,12 @@ case $cmd in
   theme)        exec sudo bash "$L4C_ROOT/setup/desktop-win11.sh" --install-theme ;;
   undo-desktop) exec bash "$L4C_ROOT/setup/desktop-win11.sh" --restore "$@" ;;
   install)      exec sudo bash "$L4C_ROOT/install/install.sh" "$@" ;;
+  scan)         exec sudo bash "$L4C_ROOT/setup/scan.sh" "$@" ;;
+  remote)       exec sudo bash "$L4C_ROOT/setup/remote.sh" "$@" ;;
+  wipe)         exec sudo bash "$L4C_ROOT/setup/wipe.sh" "$@" ;;
+  chromeos)
+    if [[ ${1:-} == firmware ]]; then exec sudo bash "$L4C_ROOT/setup/chromeos.sh" "$@"; fi
+    exec bash "$L4C_ROOT/setup/chromeos.sh" "$@" ;;
   status)       status ;;
   self-install)
     sudo rm -rf /opt/linux-for-chromebook.new
