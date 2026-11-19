@@ -55,6 +55,15 @@ sudo l4c scan            # 生成 ~/l4c-scan-*.md
 
 已确认：固件类型（原厂 + RW_LEGACY，见上表）、键盘 physmap 与 keyd ID、eMMC 支持 discard（`DISC-GRAN 4M`）、声卡型号与缺 UCM 的原因、充电上限接口。
 
+**2026-11-19 已在真机上全新安装并验证**（内核 6.18.55，btrfs 占用 51%，含 AUR 软件）：
+- 安装器在 Live（kexec 启动）里跑通：basestrap / manjaro-chroot / fstabgen / btrfs mkswapfile / grub-install 两个路径都成功
+- 声卡：Speaker、Headphones、HDMI1~4、Mic1/Mic2/Headset 都出现在 PipeWire 里（还没试听）
+- 视频：vainfo 显示 iHD 26.3.5，H.264/HEVC 解码和编码；Xorg 用 modesetting
+- 内存：zram 7.3G、THP madvise、MGLRU 1000、swappiness 180、page-cluster 0；Wi-Fi 省电关闭后开机 9 分钟内 0 条 missed beacons
+- 已知坑：原厂固件的 RW_LEGACY 不保存 UEFI 变量（BootNext、新启动项重启即丢），Ctrl+L 后又来不及按 Esc，
+  所以从 U 盘启动的可靠办法是在旧系统里 **kexec** 进 Live（见 `chromebook-scripts/l4c-kexec.sh` 的做法）；U 盘插着时固件有时会优先启动 U 盘
+- 已知坑：新系统的 Wi-Fi 第一次会用随机 MAC 拿到新 IP；旧系统的 ufw 是 `ENABLED=no`，新系统同样未启用（已补 9993/udp 规则备用）
+
 - [ ] `install/install.sh`：Manjaro Live 上 `basestrap` / `manjaro-chroot` / `fstabgen` 是否可用；btrfs `mkswapfile`；RW_LEGACY 下 `grub-install` 写 NVRAM 是否成功（失败会自动改 `--no-nvram`，`--removable` 默认路径是必须的）
 - [ ] `install/packages/*.txt` 包名是否都在 Manjaro 源里（`pamac-gtk3`、`xfce4-docklike-plugin`、`adobe-source-han-sans-cn-fonts`、内核包名 `linux618`）
 - [ ] 声卡：`l4c audio`（固定 chromebook-linux-audio 84b700e，自动选菜单 1）装完后 `pactl list short sinks` 不再只有 auto_null；扬声器、耳机、内置麦克风（`dmic_num=4`）都要试
