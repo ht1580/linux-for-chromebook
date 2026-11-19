@@ -9,24 +9,22 @@
 
 ---
 
-## 两种用法
+## 三种用法
 
-| | A. 在现有系统上优化（推荐先试） | B. 全新安装 |
-|---|---|---|
-| 风险 | 低，不重装，每一步都会询问并备份原文件 | 清空硬盘，需要先导出迁移包 |
-| 内存优化 | ✓ | ✓ |
-| Win11 桌面 / 快捷键 | ✓ | ✓ |
-| 腾出硬盘空间 | 约 6~8 GB（缩小 swap、删文档、清缓存） | 更多：btrfs 透明压缩，系统文件通常只占原来的 50~70% |
-| 耗时 | 10 分钟 | 30~60 分钟 |
+| | A. 在现有系统上优化 | B. 借助 Windows 11 电脑全新安装（推荐） | C. 只用 U 盘全新安装 |
+|---|---|---|---|
+| 风险 | 低，不重装，每一步都会询问并备份原文件 | 清空 Chromebook 硬盘，数据先存到 Windows 电脑 | 清空硬盘，数据先存到 U 盘 |
+| 额外能做的 | — | 把 Windows 的 Wi-Fi、文件一起转换带过去；在 Windows 上校验/查看备份 | — |
+| 腾出硬盘空间 | 约 6~8 GB（缩小 swap、删文档、清缓存） | 更多：btrfs 透明压缩，系统文件通常只占原来的 50~70% | 同 B |
 
-### A. 在现有 Manjaro 上优化
+### A. 在现有 Manjaro 上优化（不重装）
 
 ```bash
 git clone https://github.com/ht1580/linux-for-chromebook
 ```
 
 ```bash
-cd linux-for-chromebook && ./bin/l4c self-install
+cd linux-for-chromebook && bash bin/l4c self-install
 ```
 
 ```bash
@@ -43,24 +41,29 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 
 不满意可以恢复桌面：`l4c undo-desktop ~/.local/share/l4c/xfce-backup-时间`。
 
-### B. 全新安装
+### B. 借助 Windows 11 电脑全新安装
 
-1. **导出迁移包**到 U 盘或移动硬盘（重装会清空本机硬盘，不能存在本机上）：
+**详细步骤见 [docs/windows.md](docs/windows.md)**，简要流程：
+
+1. Windows 上下载本项目（Code → Download ZIP），双击 `windows\启动工具.bat`
+2. 工具里「启动传输服务」，在 Chromebook 上运行工具显示的命令，数据通过局域网传到 Windows（也可以用 U 盘）
+3. 「校验迁移包」→「转换」（可选：加入 Windows 的 Wi-Fi 和文件夹）
+4. 「制作 Chromebook 安装 U 盘」（Ventoy + Manjaro 镜像 + 本工具）
+5. Chromebook 用 U 盘启动，运行 `sudo bash /run/media/manjaro/Ventoy/linux-for-chromebook/install/install.sh`
+6. 安装器询问迁移包来源时选「从 Windows 电脑获取」，边下载边导入
+7. 重启，首次登录自动应用 Windows 11 风格
+
+### C. 只用 U 盘全新安装
+
+1. 导出迁移包到 U 盘（建议 exFAT 格式）：`l4c export -o /run/media/$USER/你的U盘`
+2. 用 [Manjaro Xfce 启动 U 盘](https://manjaro.org/products/download/x86) 启动 Chromebook（开机按 Esc 选 U 盘），连上 Wi-Fi
+3. 打开终端：
 
    ```bash
-   l4c export -o /run/media/$USER/你的U盘
+   git clone https://github.com/ht1580/linux-for-chromebook && sudo bash linux-for-chromebook/install/install.sh
    ```
 
-   只想带走设置、不带个人文件，加 `--config-only`。先看看要备份多少数据，加 `--list`。
-2. 用 [Manjaro Xfce 启动 U 盘](https://manjaro.org/products/download/x86) 启动 Chromebook（开机按 Esc 选 U 盘）。
-3. 连上 Wi-Fi，打开终端：
-
-   ```bash
-   git clone https://github.com/ht1580/linux-for-chromebook && sudo linux-for-chromebook/install/install.sh
-   ```
-
-4. 按提示选择迁移包、硬盘、用户名。安装器会自动：分区（btrfs + zstd 压缩）、安装精简系统、配置键盘和声卡、导入迁移包。
-5. 重启，首次登录时会自动应用 Windows 11 风格。
+4. 按提示选择迁移包、硬盘、用户名，安装器自动完成分区、安装、键盘声卡适配、导入数据
 
 ---
 
@@ -148,8 +151,9 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 ## 命令速查
 
 ```
-l4c export -o <U盘目录>   导出迁移包
-l4c import <迁移包目录>   导入迁移包
+l4c export -o <U盘目录>   导出迁移包到 U 盘
+l4c export --send <地址>  通过局域网发送到 Windows 工具
+l4c import <目录或地址>   导入迁移包（U 盘目录或 Windows 工具的地址）
 l4c optimize [--all]      系统优化
 l4c clean                 清理存储空间
 l4c keyboard              键盘映射
@@ -170,19 +174,22 @@ lib/common.sh              公共函数
 setup/optimize.sh          内存、存储、eMMC、视频解码优化
 setup/chromebook.sh        键盘映射、声卡、硬件信息
 setup/desktop-win11.sh     Windows 11 风格桌面和快捷键
-migrate/export.sh          转换程序：导出迁移包
-migrate/import.sh          导入程序：还原迁移包
+migrate/export.sh          转换程序：导出迁移包（U 盘 / 局域网发送）
+migrate/import.sh          导入程序：还原迁移包（U 盘 / 局域网边下载边导入）
+windows/启动工具.bat        Windows 工具：接收、校验、转换、回传迁移包，制作安装 U 盘
+windows/l4c-win.ps1        Windows 工具本体（PowerShell）
 install/install.sh         全新安装器（在 Manjaro 启动 U 盘里运行）
 install/chroot-setup.sh    安装器在新系统里执行的配置步骤
 install/packages/*.txt     全新安装的软件包列表（可自行增删）
 config/                    各种配置文件
-docs/                      快捷键表、迁移说明
+docs/                      快捷键表、迁移说明、Windows 流程
 ```
 
 ## 测试情况
 
 - 所有脚本通过 `bash -n` 语法检查和 ShellCheck 静态检查（GitHub Actions 自动运行）
-- 迁移包的导出 → 导入流程（个人文件、缓存排除、用户名不同时的路径修正、Wi-Fi 权限、完整性校验）已在 Linux 环境中实际测试
+- 迁移包的导出 → 导入流程已在 Linux 环境中实际测试：U 盘方式、局域网边传边导入方式（用模拟的 Windows 传输服务）、FAT32 分卷、中文文件名、从 Windows 加入的文件和 Wi-Fi、用户名不同时的路径修正、完整性校验
+- Windows 工具（PowerShell）做了结构检查和人工审阅，**尚未在真实 Windows 11 上运行过**
 - 键盘映射生成、配置文件修改（pacman.conf、fstab、GRUB 参数）已测试，并且重复运行结果不变
 - **尚未在 Yavilla 实机上完整测试全新安装流程**，如遇问题请把终端里的报错（会显示出错的脚本和行号）提交到 Issues
 

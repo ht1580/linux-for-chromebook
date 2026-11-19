@@ -1,14 +1,21 @@
 # 迁移说明
 
+> 通过 Windows 11 电脑中转的完整流程见 [windows.md](windows.md)。
+
 ## 导出（旧系统上）
 
 ```bash
-l4c export -o /run/media/$USER/你的U盘
+l4c export -o /run/media/$USER/你的U盘          # 保存到 U 盘
+```
+
+```bash
+l4c export --send http://192.168.1.10:8848/口令   # 通过局域网发给 Windows 工具
 ```
 
 | 选项 | 说明 |
 |---|---|
-| `-o 目录` | 保存位置。**全新安装前必须保存到 U 盘或移动硬盘**，保存在本机上会提示确认 |
+| `-o 目录` | 保存位置。**全新安装前必须保存到 U 盘或移动硬盘**，保存在本机上会提示确认。FAT32 U 盘会自动分卷（单文件 4G 限制） |
+| `--send 地址` | 边打包边通过局域网发送到 Windows 工具，Chromebook 上不占额外空间 |
 | `--config-only` | 只备份设置（主目录下所有隐藏文件夹 + 桌面 + 模板），不备份文档 / 图片 / 下载等 |
 | `--exclude '模式'` | 额外跳过某些文件，例如 `--exclude 'Videos/*'`，可以写多次 |
 | `--no-wifi` | 不备份 Wi-Fi 密码 |
@@ -30,6 +37,8 @@ l4c-backup-电脑名-日期/
 ├── system.tar.zst        Wi-Fi、蓝牙配对、主机名、Xorg、keyd、GRUB 等（仅 root 可读）
 ├── unowned.tar.zst       手动装到 /usr/share/{themes,icons,fonts} 和 /usr/local 的文件
 ├── unowned.list
+├── extra/                （Windows 工具「转换」加入的文件夹 → 新系统 ~/来自Windows/）
+├── wifi-from-windows/    （Windows 工具转换的 Wi-Fi，NetworkManager 格式）
 ├── hardware/             inxi、lspci、lsusb、lsblk、顶排按键布局
 └── SHA256SUMS            完整性校验
 ```
@@ -44,7 +53,11 @@ npm / cargo / gradle 下载缓存、缩略图。
 全新安装时，安装器会自动找到 U 盘上的迁移包并导入。也可以导入到任何已经装好的 Manjaro：
 
 ```bash
-sudo l4c import /run/media/$USER/你的U盘/l4c-backup-xxx
+sudo l4c import /run/media/$USER/你的U盘/l4c-backup-xxx            # 从 U 盘
+```
+
+```bash
+sudo l4c import http://192.168.1.10:8848/口令/l4c-backup-xxx       # 从 Windows 工具（边下载边解压）
 ```
 
 | 选项 | 说明 |

@@ -12,8 +12,9 @@ linux-for-chromebook $L4C_VERSION
 用法: l4c <命令> [参数]
 
   迁移
-    export -o <U盘目录>     导出迁移包（软件清单、设置、个人文件、Wi-Fi、蓝牙）
-    import <迁移包目录>     导入迁移包到本系统
+    export -o <U盘目录>     导出迁移包到 U 盘（软件清单、设置、个人文件、Wi-Fi、蓝牙）
+    export --send <地址>    通过局域网直接发送到 Windows 工具
+    import <目录或地址>     导入迁移包（U 盘目录，或 Windows 工具给出的地址）
   在现有系统上优化（不重装）
     optimize [--all]        内存（zram/earlyoom）、存储、eMMC、视频解码等优化
     clean                   清理存储空间
@@ -54,21 +55,23 @@ status() {
 
 cmd=${1:-help}; shift || true
 case $cmd in
-  export)       exec "$L4C_ROOT/migrate/export.sh" "$@" ;;
-  import)       exec sudo "$L4C_ROOT/migrate/import.sh" "$@" ;;
-  optimize)     exec sudo "$L4C_ROOT/setup/optimize.sh" "$@" ;;
-  clean)        exec sudo "$L4C_ROOT/setup/optimize.sh" --clean ;;
-  keyboard)     exec sudo "$L4C_ROOT/setup/chromebook.sh" keyboard ;;
-  audio)        exec "$L4C_ROOT/setup/chromebook.sh" audio ;;
-  info)         exec "$L4C_ROOT/setup/chromebook.sh" info ;;
-  desktop)      exec "$L4C_ROOT/setup/desktop-win11.sh" "$@" ;;
-  theme)        exec sudo "$L4C_ROOT/setup/desktop-win11.sh" --install-theme ;;
-  undo-desktop) exec "$L4C_ROOT/setup/desktop-win11.sh" --restore "$@" ;;
-  install)      exec sudo "$L4C_ROOT/install/install.sh" "$@" ;;
+  export)       exec bash "$L4C_ROOT/migrate/export.sh" "$@" ;;
+  import)       exec sudo bash "$L4C_ROOT/migrate/import.sh" "$@" ;;
+  optimize)     exec sudo bash "$L4C_ROOT/setup/optimize.sh" "$@" ;;
+  clean)        exec sudo bash "$L4C_ROOT/setup/optimize.sh" --clean ;;
+  keyboard)     exec sudo bash "$L4C_ROOT/setup/chromebook.sh" keyboard ;;
+  audio)        exec bash "$L4C_ROOT/setup/chromebook.sh" audio ;;
+  info)         exec bash "$L4C_ROOT/setup/chromebook.sh" info ;;
+  desktop)      exec bash "$L4C_ROOT/setup/desktop-win11.sh" "$@" ;;
+  theme)        exec sudo bash "$L4C_ROOT/setup/desktop-win11.sh" --install-theme ;;
+  undo-desktop) exec bash "$L4C_ROOT/setup/desktop-win11.sh" --restore "$@" ;;
+  install)      exec sudo bash "$L4C_ROOT/install/install.sh" "$@" ;;
   status)       status ;;
   self-install)
     sudo rm -rf /opt/linux-for-chromebook.new
-    sudo cp -a "$L4C_ROOT" /opt/linux-for-chromebook.new
+    sudo cp -r "$L4C_ROOT" /opt/linux-for-chromebook.new
+    sudo chmod -R u=rwX,go=rX /opt/linux-for-chromebook.new
+    sudo chmod +x /opt/linux-for-chromebook.new/{bin/l4c,setup/*.sh,migrate/*.sh,install/*.sh}
     sudo rm -rf /opt/linux-for-chromebook
     sudo mv /opt/linux-for-chromebook.new /opt/linux-for-chromebook
     sudo ln -sf /opt/linux-for-chromebook/bin/l4c /usr/local/bin/l4c

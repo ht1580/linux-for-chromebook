@@ -117,4 +117,17 @@ systemd_enable() { # 服务…  （chroot 中只 enable，不 start）
   done
 }
 
+# 把路径转成 URL 编码（中文文件名通过局域网传输时需要）
+urlencode() {
+  local LC_ALL=C s=$1 out="" c i
+  for ((i = 0; i < ${#s}; i++)); do
+    c=${s:i:1}
+    case $c in
+      [a-zA-Z0-9._~/-]) out+=$c ;;
+      *) printf -v c '%%%02X' "'$c"; out+=$c ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
 human_size() { numfmt --to=iec --suffix=B "${1:-0}" 2>/dev/null || echo "${1}B"; }

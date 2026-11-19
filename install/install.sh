@@ -42,22 +42,38 @@ done
 ok "网络正常"
 
 # ------------------------------------------------------------ 2. 迁移包 --
+# 来源：U 盘上的迁移包目录，或 Windows 工具通过局域网提供的地址（边下载边导入，不占 U 盘/内存）
 BACKUP=""
-mapfile -t found < <(find /run/media /media /mnt -maxdepth 4 -name manifest.env -path '*l4c-backup-*' -printf '%h\n' 2>/dev/null | sort -r)
-if ((${#found[@]})); then
-  echo "找到迁移包："; for i in "${!found[@]}"; do echo "  $((i + 1))) ${found[$i]}"; done
-  sel=$(ask "导入哪一个？（输入编号，0 = 不导入）" 1)
-  if [[ $sel =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#found[@]})); then BACKUP=${found[$((sel - 1))]}; fi
-else
-  p=$(ask "迁移包路径（没有就直接回车）" "")
-  [[ -n $p ]] && { [[ -f $p/manifest.env ]] || die "$p 里没有 manifest.env"; BACKUP=$(readlink -f "$p"); }
+mapfile -t found < <(find /run/media /media /mnt -maxdepth 6 -name manifest.env -path '*l4c-backup-*' -printf '%h\n' 2>/dev/null | sort -r)
+echo "迁移包来源："
+for i in "${!found[@]}"; do echo "  $((i + 1))) U 盘：${found[$i]}"; done
+echo "  w) 从 Windows 电脑通过局域网获取"
+echo "  0) 不导入，全新开始"
+sel=$(ask "请选择" "$([[ ${#found[@]} -gt 0 ]] && echo 1 || echo w)")
+if [[ $sel =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#found[@]})); then
+  BACKUP=${found[$((sel - 1))]}
+elif [[ $sel == w || $sel == W ]]; then
+  base=$(ask "Windows 工具里显示的地址（形如 http://192.168.1.10:8848/口令）" "")
+  base=${base%/}
+  [[ $base =~ ^https?:// ]] || die "地址格式不对"
+  mapfile -t pk < <(curl -fsS -m 15 "$base/" | grep '^l4c-backup-' | sort -r) || true
+  ((${#pk[@]})) || die "连不上 Windows 工具或里面没有迁移包。请确认工具正在运行、两台设备连着同一个 Wi-Fi。"
+  for i in "${!pk[@]}"; do echo "  $((i + 1))) ${pk[$i]}"; done
+  n=$(ask "导入哪一个？" 1)
+  [[ $n =~ ^[0-9]+$ ]] && ((n >= 1 && n <= ${#pk[@]})) || die "无效选择"
+  BACKUP="$base/${pk[$((n - 1))]}"
+elif [[ $sel != 0 && -f $sel/manifest.env ]]; then
+  BACKUP=$(readlink -f "$sel")
 fi
 declare -A M=()
 if [[ -n $BACKUP ]]; then
+  if [[ $BACKUP =~ ^https?:// ]]; then manifest=$(curl -fsS "$BACKUP/manifest.env") || die "无法读取迁移包"
+  else manifest=$(cat "$BACKUP/manifest.env")
+  fi
   while IFS= read -r line; do
     [[ $line =~ ^([A-Z0-9_]+)=(.*)$ ]] && M[${BASH_REMATCH[1]}]=${BASH_REMATCH[2]}
-  done <"$BACKUP/manifest.env"
-  ok "将导入：$BACKUP"
+  done <<<"$manifest"
+  ok "将导入：$BACKUP（来自 ${M[HOSTNAME]:-?}，用户 ${M[USERNAME]:-?}）"
 fi
 
 # ------------------------------------------------------------ 3. 硬盘 ----
@@ -148,10 +164,13 @@ echo "/swap/swapfile none swap defaults,pri=-2 0 0" >>"$MNT/etc/fstab"
 
 # 把本项目复制进新系统，以后可以直接用 l4c 命令
 mkdir -p "$MNT/opt"
-cp -a "$L4C_ROOT" "$MNT/opt/linux-for-chromebook"
+cp -r "$L4C_ROOT" "$MNT/opt/linux-for-chromebook"   # 从 U 盘（exFAT）复制时没有权限位，下面补上
+rm -rf "$MNT/opt/linux-for-chromebook/.git"
+chmod -R u=rwX,go=rX "$MNT/opt/linux-for-chromebook"
+chmod +x "$MNT"/opt/linux-for-chromebook/{bin/l4c,setup/*.sh,migrate/*.sh,install/*.sh}
 ln -sf /opt/linux-for-chromebook/bin/l4c "$MNT/usr/local/bin/l4c"
 
-if [[ -n $BACKUP ]]; then
+if [[ -n $BACKUP && ! $BACKUP =~ ^https?:// ]]; then
   mkdir -p "$MNT/mnt/l4c-backup"
   mount --bind "$BACKUP" "$MNT/mnt/l4c-backup"
 fi
@@ -164,14 +183,14 @@ TIMEZONE_=$TIMEZONE_
 LOCALE_=$LOCALE_
 WIN11=$WIN11
 AUDIO=$AUDIO
-BACKUP=$([[ -n $BACKUP ]] && echo /mnt/l4c-backup)
+BACKUP=$(if [[ $BACKUP =~ ^https?:// ]]; then echo "$BACKUP"; elif [[ -n $BACKUP ]]; then echo /mnt/l4c-backup; fi)
 USER_SHELL=${M[USER_SHELL]:-/usr/bin/zsh}
 EOF
 
 info "配置新系统"
-L4C_YES=$L4C_YES_SAVED manjaro-chroot "$MNT" /opt/linux-for-chromebook/install/chroot-setup.sh
+L4C_YES=$L4C_YES_SAVED manjaro-chroot "$MNT" bash /opt/linux-for-chromebook/install/chroot-setup.sh
 
-if [[ -n $BACKUP ]]; then umount "$MNT/mnt/l4c-backup" 2>/dev/null || true; fi
+if [[ -n $BACKUP && ! $BACKUP =~ ^https?:// ]]; then umount "$MNT/mnt/l4c-backup" 2>/dev/null || true; fi
 rm -f "$MNT/root/l4c-install.env"
 trap - ERR
 sync

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # 导入程序：把 export.sh 生成的迁移包还原到新系统。
 #
-#   sudo ./migrate/import.sh /run/media/$USER/U盘/l4c-backup-xxx
+#   从 U 盘：      sudo ./migrate/import.sh /run/media/$USER/U盘/l4c-backup-xxx
+#   从 Windows：   sudo ./migrate/import.sh http://192.168.1.10:8848/口令/l4c-backup-xxx
+#                 （边下载边解压，不需要先把整个迁移包存到本机）
 #   选项：
 #     --user NAME        还原到哪个用户（默认：运行 sudo 的用户 / 迁移包里的用户名）
 #     --yes              不逐项询问，全部采用推荐选择
@@ -23,7 +25,7 @@ while (($#)); do
     --skip-system) SKIP_SYS=1 ;;
     --skip-flatpak) SKIP_FLATPAK=1 ;;
     --keep-hostname) KEEP_HOST=1 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     -*) die "未知参数: $1" ;;
     *) SRC=$1 ;;
   esac
@@ -32,10 +34,57 @@ done
 
 require_root
 have zstd || die "缺少 zstd：pacman -S zstd"
-[[ -n $SRC && -f $SRC/manifest.env ]] || die "请指定迁移包目录（里面应该有 manifest.env）"
-SRC=$(readlink -f "$SRC")
+[[ -n $SRC ]] || die "请指定迁移包目录或 Windows 工具给出的地址"
 LOG=/var/log/l4c-import.log
 exec > >(tee -a "$LOG") 2>&1
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+# ---------------------------------------------------------- 迁移包来源 ----
+# 局域网来源：先下载小文件，大文件（home/unowned/extra）在还原时边下载边解压
+URL="" LISTING=""
+STREAMED_RE='^(home|unowned)\.tar\.zst(\.part[0-9]+)?$|^extra/'
+if [[ $SRC =~ ^https?:// ]]; then
+  URL=${SRC%/}
+  have curl || die "缺少 curl"
+  info "从 $URL 获取迁移包"
+  LISTING=$(curl -fsS -m 30 "$URL/") || die "连不上 Windows 工具，请确认它正在运行、地址和口令正确"
+  SRC=$TMP/pkg
+  while IFS= read -r f; do
+    [[ -z $f || $f =~ $STREAMED_RE ]] && continue
+    mkdir -p "$SRC/$(dirname "$f")"
+    curl -fsS -o "$SRC/$f" "$URL/$(urlencode "$f")" || die "下载 $f 失败"
+  done <<<"$LISTING"
+fi
+[[ -f $SRC/manifest.env ]] || die "$SRC 里没有 manifest.env，不是有效的迁移包"
+SRC=$(readlink -f "$SRC")
+
+# member_list —— 迁移包里所有文件（相对路径）
+member_list() {
+  if [[ -n $URL ]]; then printf '%s\n' "$LISTING"; else (cd "$SRC" && find . -type f -printf '%P\n'); fi
+}
+# member_parts 名称 —— 完整文件或分卷（FAT32 U 盘导出时会分卷）
+member_parts() {
+  local re=${1//./\\.}
+  member_list | grep -xE "$re(\.part[0-9]+)?" | sort
+}
+has_member() { [[ -n $(member_parts "$1") ]]; }
+# open_member 名称 —— 把文件内容输出到标准输出
+open_member() {
+  local p
+  while IFS= read -r p; do
+    if [[ -n $URL ]]; then curl -fsS "$URL/$(urlencode "$p")"; else cat "$SRC/$p"; fi
+  done < <(member_parts "$1")
+}
+# 局域网模式：边解压边算校验值，结束后比对
+expected_sum() { awk -v n="$1" '$2 == n || $2 == "*" n {print $1}' "$SRC/SHA256SUMS" 2>/dev/null; }
+check_stream_sum() { # 名称 实际值文件
+  [[ -n $URL ]] || return 0
+  local want got; want=$(expected_sum "$1"); got=$(cut -d' ' -f1 "$2" 2>/dev/null)
+  if [[ -n $want && -n $got && $want != "$got" ]]; then
+    warn "$1 传输过程中可能出错（校验值不一致），建议重新导入一次"
+  fi
+}
 
 # 安全读取 manifest（不执行其中任何内容）
 declare -A M
@@ -44,10 +93,18 @@ while IFS= read -r line; do
 done <"$SRC/manifest.env"
 m() { echo "${M[$1]:-}"; }
 
-info "导入迁移包 $SRC（创建于 $(m CREATED)，来自 $(m HOSTNAME)）"
-info "校验文件完整性……"
-(cd "$SRC" && sha256sum --quiet -c SHA256SUMS) || confirm "校验失败，文件可能损坏。仍然继续？" n || die "已取消"
-ok "校验通过"
+info "导入迁移包 $(basename "${URL:-$SRC}")（创建于 $(m CREATED)，来自 $(m HOSTNAME)）"
+if [[ -f $SRC/SHA256SUMS ]]; then
+  info "校验文件完整性……"
+  if [[ -n $URL ]]; then
+    (cd "$SRC" && sha256sum --quiet --ignore-missing -c SHA256SUMS) || confirm "校验失败，文件可能损坏。仍然继续？" n || die "已取消"
+  else
+    (cd "$SRC" && sha256sum --quiet -c SHA256SUMS) || confirm "校验失败，文件可能损坏。仍然继续？" n || die "已取消"
+  fi
+  ok "校验通过"
+else
+  warn "迁移包里没有校验文件，跳过校验"
+fi
 
 OLD_USER=$(m USERNAME)
 if [[ -z $USER_NAME ]]; then
@@ -56,8 +113,6 @@ fi
 getent passwd "$USER_NAME" >/dev/null || die "用户 $USER_NAME 不存在，请先创建（或用 --user 指定）"
 HOME_DIR=$(user_home "$USER_NAME")
 USER_GROUP=$(id -gn "$USER_NAME")
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
 
 # 新系统已经替换/优化掉的软件，不再装回来
 SKIP_RE='^(linux[0-9]+(-headers)?|linux|linux-lts|linux-firmware|grub|efibootmgr|os-prober|memtest86\+.*|mhwd.*|manjaro-.*-settings|calamares.*|noto-fonts-cjk|systemd-swap|zramswap|swapspace)$'
@@ -108,9 +163,11 @@ restore_flatpak() {
 }
 
 restore_home() {
-  [[ -f $SRC/home.tar.zst ]] || return 0
-  info "还原个人文件和设置到 $HOME_DIR"
-  zstd -dc "$SRC/home.tar.zst" | tar -x --no-same-owner --overwrite -C "$HOME_DIR" -f - || warn "部分文件还原失败"
+  has_member home.tar.zst || return 0
+  info "还原个人文件和设置到 $HOME_DIR$([[ -n $URL ]] && echo '（边下载边解压）')"
+  open_member home.tar.zst | tee >(sha256sum >"$TMP/home.sha") | zstd -dc |
+    tar -x --no-same-owner --overwrite -C "$HOME_DIR" -f - || warn "部分文件还原失败"
+  sleep 1; check_stream_sum home.tar.zst "$TMP/home.sha"
   chown -R "$USER_NAME:$USER_GROUP" "$HOME_DIR"
   # 用户名不同：修正配置文件里的旧路径
   local old_home; old_home=$(m HOME_DIR)
@@ -177,9 +234,9 @@ restore_system() {
 }
 
 restore_unowned() {
-  [[ -f $SRC/unowned.tar.zst ]] || return 0
+  has_member unowned.tar.zst || return 0
   info "还原手动安装的主题、图标、字体"
-  zstd -dc "$SRC/unowned.tar.zst" |
+  open_member unowned.tar.zst | zstd -dc |
     tar -x --no-same-owner --skip-old-files -C / -f - 2>/dev/null || true
   have fc-cache && fc-cache -f >/dev/null 2>&1 || true
   local d
@@ -187,6 +244,37 @@ restore_unowned() {
     [[ -f $d/index.theme ]] && gtk-update-icon-cache -qf "$d" 2>/dev/null || true
   done
   ok "主题/图标/字体已还原"
+}
+
+# Windows 工具「转换」时加入的文件夹 → ~/来自Windows/
+restore_extra() {
+  local files; files=$(member_list | grep '^extra/' || true)
+  [[ -n $files ]] || return 0
+  local dst="$HOME_DIR/来自Windows" f
+  info "还原从 Windows 加入的文件到 $dst"
+  while IFS= read -r f; do
+    mkdir -p "$dst/$(dirname "${f#extra/}")"
+    if [[ -n $URL ]]; then curl -fsS -o "$dst/${f#extra/}" "$URL/$(urlencode "$f")" || warn "下载 $f 失败"
+    else cp -f "$SRC/$f" "$dst/${f#extra/}"
+    fi
+  done <<<"$files"
+  chown -R "$USER_NAME:$USER_GROUP" "$dst"
+  ok "Windows 文件：$(grep -c . <<<"$files") 个"
+}
+
+# Windows 工具转换好的 Wi-Fi（NetworkManager 格式）
+restore_windows_wifi() {
+  [[ -d $SRC/wifi-from-windows ]] || return 0
+  local f n=0
+  install -d -m 700 /etc/NetworkManager/system-connections
+  for f in "$SRC"/wifi-from-windows/*.nmconnection; do
+    [[ -f $f ]] || continue
+    [[ -e /etc/NetworkManager/system-connections/$(basename "$f") ]] && continue
+    install -m 600 -o root -g root "$f" /etc/NetworkManager/system-connections/
+    n=$((n + 1))
+  done
+  ((n)) && ok "Windows 电脑上保存的 Wi-Fi：$n 个"
+  return 0
 }
 
 restore_shell_services() {
@@ -214,7 +302,8 @@ restore_shell_services() {
 
 ((SKIP_PKG)) || { restore_packages; restore_flatpak; }
 ((SKIP_HOME)) || restore_home
-((SKIP_SYS)) || restore_system
+((SKIP_HOME)) || restore_extra
+((SKIP_SYS)) || { restore_system; restore_windows_wifi; }
 restore_unowned
 restore_shell_services
 ok "导入完成！日志：$LOG"
