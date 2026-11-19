@@ -287,6 +287,34 @@ step_wine() {
   return 0
 }
 
+# 吃内存的 Electron 应用（QQ、哔哩哔哩）：从开始菜单启动时放进一个有「内存软上限」的 systemd scope。
+# 超过上限时系统优先把它闲置的内存压缩进 zram，而不是挤占浏览器和桌面；程序照常运行，不会被强制结束（不用 MemoryMax）。
+# 做法：在 ~/.local/share/applications 放一份同名 .desktop，Exec 前面加 systemd-run（删掉这份文件即恢复）
+step_app_limits() {
+  local user home d src n app=() e
+  user=$(target_user); home=$(user_home "$user")
+  [[ -n $home && -d $home && $user != root ]] || return 0
+  for e in qq bilibili; do
+    for src in /usr/share/applications/*.desktop; do
+      [[ -f $src ]] && grep -qiE "^Exec=.*(/opt/QQ/qq|/usr/bin/(linux)?qq|bilibili)" "$src" || continue
+      case $e in qq) grep -qi 'qq' "$src" ;; *) grep -qi "$e" "$src" ;; esac && app+=("$src")
+    done
+  done
+  mapfile -t app < <(printf '%s\n' "${app[@]}" | sort -u)
+  [[ -n ${app[0]:-} ]] || return 0
+  local ram_mb high; ram_mb=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo); high=$((ram_mb / 4))
+  echo "找到：$(printf '%s ' "${app[@]##*/}")"
+  confirm "给这些应用设内存软上限 ${high} MB（超出部分压缩进 zram，不会被强制结束）并降低后台 CPU 优先级？" y || return 0
+  d="$home/.local/share/applications"; mkdir -p "$d"
+  for src in "${app[@]}"; do
+    n=${src##*/}
+    sed -E "s|^Exec=(.*)$|Exec=systemd-run --user --scope --quiet -p MemoryHigh=${high}M -p CPUWeight=50 \1|" "$src" >"$d/$n"
+    grep -q '^X-l4c=' "$d/$n" || echo "X-l4c=内存软上限（删除本文件即可恢复）" >>"$d/$n"
+  done
+  chown -R "$user:" "$home/.local/share/applications"
+  ok "已给 ${#app[@]} 个应用设内存软上限 ${high} MB（下次从开始菜单启动时生效）"
+}
+
 # 开机常驻程序瘦身：4G 内存里，开机就常驻的程序能省则省
 # （实测这台机器可用内存多出约 55 MB；Proton VPN 后台用过一次就会一直占着，峰值约 250 MB）
 step_ram_apps() {
@@ -451,7 +479,7 @@ step_clean() {
 }
 
 if [[ $MODE == clean ]]; then step_clean; exit 0; fi
-if [[ $MODE == ram ]]; then step_ram_apps; exit 0; fi
+if [[ $MODE == ram ]]; then step_ram_apps; step_app_limits; step_browser_memory; exit 0; fi
 if [[ $MODE == wine ]]; then step_wine; exit 0; fi
 
 info "linux-for-chromebook $L4C_VERSION 系统优化"
@@ -463,6 +491,7 @@ step_disk
 step_kernel
 step_video
 step_browser_memory
+step_app_limits
 step_input
 step_wifi
 step_battery
