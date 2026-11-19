@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 全新安装：在 Manjaro 启动 U 盘（Live 系统）里运行，把优化版系统装到 Chromebook 的 eMMC 上。
+# 全新安装：在 Manjaro、CachyOS 或 Arch 的启动 U 盘（Live 系统）里运行，把优化版系统装到 Chromebook 的 eMMC 上。
+# 用哪个发行版的 U 盘启动，就装哪个发行版（CachyOS 会用按 x86-64-v3 编译的软件源）。
 #
 #   sudo ./install/install.sh
 #
@@ -9,12 +10,20 @@
 #   • 精简的 Xfce 桌面，Windows 11 使用习惯，Chromebook 键盘/声卡适配
 #   • 可以选择迁移包（export.sh 生成），自动还原软件、设置、个人文件、Wi-Fi
 #
-# 环境变量（可选）：KERNEL=linux618  MIRROR_COUNTRY=China  SWAP_GB=1
+# 环境变量（可选）：KERNEL=内核包名（默认 Manjaro linux618 / CachyOS linux-cachyos / Arch linux）
+#   MIRROR_COUNTRY=China  SWAP_GB=1
 #   L4C_BACKUP_URL=http://IP:8848/口令   预先填好迁移包地址（例如通过 ssh -R 隧道从 Windows 获取）
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
-KERNEL="${KERNEL:-linux618}"
+DISTRO=$(l4c_distro)
+case $DISTRO in
+  manjaro) DEF_KERNEL=linux618 BOOT_ID=Manjaro ;;
+  cachyos) DEF_KERNEL=linux-cachyos BOOT_ID=CachyOS ;;
+  arch)    DEF_KERNEL=linux BOOT_ID=Arch ;;
+  *) die "请在 Manjaro、CachyOS 或 Arch 的启动 U 盘里运行本安装器（当前系统：$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-未知}")）。" ;;
+esac
+KERNEL="${KERNEL:-$DEF_KERNEL}"
 SWAP_GB="${SWAP_GB:-1}"
 MNT=/mnt
 MOUNT_OPTS="noatime,compress=zstd:3,space_cache=v2,discard=async"
@@ -23,7 +32,6 @@ require_root
 [[ -d /sys/firmware/efi ]] || die "没有以 UEFI 模式启动。原厂固件请在开发者模式下按 Ctrl+L 进入 RW_LEGACY（UEFI）再选 U 盘；或者刷 MrChromebox 的 UEFI 固件（mrchromebox.tech）。"
 # 原厂固件（开发者模式 + RW_LEGACY）：固件在主板芯片里，清空 eMMC 不会影响它
 STOCK_FW=0; grep -qi '^Google_' /sys/class/dmi/id/bios_version 2>/dev/null && STOCK_FW=1
-grep -qi manjaro /etc/os-release || die "请在 Manjaro 的启动 U 盘里运行本安装器。"
 mountpoint -q "$MNT" && die "$MNT 已被挂载，请先卸载：umount -R $MNT"
 
 # 完整输出同时记到日志：出错时屏幕可能已经被清掉（例如在 screen 里运行），装完会复制到新系统的 /var/log
@@ -42,7 +50,8 @@ echo "
 
 # ------------------------------------------------------------ 1. 网络 ----
 info "检查网络"
-until curl -fsS -m 10 -o /dev/null https://manjaro.org 2>/dev/null; do
+net_ok() { local u; for u in https://manjaro.org https://archlinux.org https://cachyos.org; do curl -fsS -m 10 -o /dev/null "$u" 2>/dev/null && return 0; done; return 1; }
+until net_ok; do
   warn "无法联网。请点击右下角网络图标连接 Wi-Fi（或运行 nmtui）。"
   confirm "连好后按回车重试，输入 n 退出" y || die "需要网络才能安装"
 done
@@ -85,7 +94,7 @@ fi
 
 # ------------------------------------------------------------ 3. 硬盘 ----
 live_disk=""
-src=$(findmnt -no SOURCE /run/miso/bootmnt 2>/dev/null || true)
+src=$(findmnt -no SOURCE "$(live_bootmnt)" 2>/dev/null || true)
 if [[ -n $src ]]; then
   live_disk=$(lsblk -no PKNAME "$src" 2>/dev/null | head -1)
   # 整盘写入的 ISO（或 kexec 启动）时 bootmnt 直接是整块盘，没有父设备
@@ -156,7 +165,7 @@ sfdisk --wipe always --label gpt "$DISK" >/dev/null <<EOF
 EOF
 udevadm settle; sleep 1
 mkfs.fat -F32 -n EFI "$ESP" >/dev/null
-mkfs.btrfs -f -L Manjaro "$ROOT" >/dev/null
+mkfs.btrfs -f -L "$BOOT_ID" "$ROOT" >/dev/null
 mount "$ROOT" "$MNT"
 for sv in @ @home @cache @log @swap; do btrfs subvolume create "$MNT/$sv" >/dev/null; done
 umount "$MNT"
@@ -171,27 +180,48 @@ ok "btrfs（zstd 压缩）分区完成"
 L4C_YES=1 bash "$L4C_ROOT/setup/wipe.sh" efi || warn "清理旧启动项失败，不影响安装"
 
 # ------------------------------------------------------------ 6. 安装 ----
-info "准备软件源"
-if [[ -n ${MIRROR_COUNTRY:-} ]]; then pacman-mirrors -c "$MIRROR_COUNTRY" >/dev/null 2>&1 || true
-else pacman-mirrors --fasttrack 5 >/dev/null 2>&1 || true
-fi
+info "准备软件源（$DISTRO）"
+case $DISTRO in
+  manjaro)
+    if [[ -n ${MIRROR_COUNTRY:-} ]]; then pacman-mirrors -c "$MIRROR_COUNTRY" >/dev/null 2>&1 || true
+    else pacman-mirrors --fasttrack 5 >/dev/null 2>&1 || true
+    fi ;;
+  arch)
+    have reflector && reflector --latest 10 --protocol https --sort rate ${MIRROR_COUNTRY:+--country "$MIRROR_COUNTRY"} \
+      --save /etc/pacman.d/mirrorlist >/dev/null 2>&1 || true ;;
+  cachyos)
+    have cachyos-rate-mirrors && cachyos-rate-mirrors >/dev/null 2>&1 || true ;;
+esac
 pacman -Syy --noconfirm >/dev/null
-pacman -Q manjaro-tools-base >/dev/null 2>&1 || pacman -S --noconfirm --needed manjaro-tools-base >/dev/null
-have basestrap || die "缺少 basestrap（manjaro-tools-base）"
+# 装系统用的工具：Manjaro 是 basestrap / manjaro-chroot / fstabgen，Arch 系是 pacstrap / arch-chroot / genfstab
+if [[ $DISTRO == manjaro ]]; then
+  pacman -Q manjaro-tools-base >/dev/null 2>&1 || pacman -S --noconfirm --needed manjaro-tools-base >/dev/null
+  STRAP=(basestrap) CHROOT=manjaro-chroot FSTAB=fstabgen
+else
+  # -K：给新系统初始化自己的密钥；-P：带上 Live 系统的软件源配置（CachyOS 的 v3 软件源就在里面）
+  pacman -Q arch-install-scripts >/dev/null 2>&1 || pacman -S --noconfirm --needed arch-install-scripts >/dev/null
+  STRAP=(pacstrap -K -P) CHROOT=arch-chroot FSTAB=genfstab
+fi
+have "${STRAP[0]}" || die "缺少 ${STRAP[0]}"
 
 pkgs=()
-mapfile -t -O 0 pkgs < <(read_list "$L4C_ROOT/install/packages/base.txt"; read_list "$L4C_ROOT/install/packages/desktop.txt")
+mapfile -t -O 0 pkgs < <(for f in base "base-$DISTRO" desktop; do [[ -f $L4C_ROOT/install/packages/$f.txt ]] && read_list "$L4C_ROOT/install/packages/$f.txt"; done)
 pkgs+=("$KERNEL")
 # 2025 年起 linux-firmware 拆分成按厂商的子包，只装 Intel 的能省几百 MB
 if pacman -Si linux-firmware-intel >/dev/null 2>&1; then pkgs+=(linux-firmware-intel linux-firmware-whence)
 else pkgs+=(linux-firmware)
 fi
 mapfile -t pkgs < <(pkg_filter_available "${pkgs[@]}")
-printf '%s\n' "${pkgs[@]}" | grep -qx "$KERNEL" || die "软件源里没有内核 $KERNEL，请用 KERNEL=linuxXXX 指定（mhwd-kernel -l 查看）"
+printf '%s\n' "${pkgs[@]}" | grep -qx "$KERNEL" || die "软件源里没有内核 $KERNEL，请用 KERNEL=内核包名 指定（pacman -Ss ^linux 查看）"
 
 info "安装 ${#pkgs[@]} 个软件包（10~30 分钟，取决于网速）"
-basestrap "$MNT" "${pkgs[@]}"
-fstabgen -U "$MNT" >"$MNT/etc/fstab"
+"${STRAP[@]}" "$MNT" "${pkgs[@]}"
+"$FSTAB" -U "$MNT" >"$MNT/etc/fstab"
+# pacstrap -K 给新系统建的是空密钥环，导入发行版的签名密钥，否则以后更新会校验失败
+case $DISTRO in
+  arch)    "$CHROOT" "$MNT" pacman-key --populate archlinux >/dev/null ;;
+  cachyos) "$CHROOT" "$MNT" pacman-key --populate archlinux cachyos >/dev/null ;;
+esac
 
 info "创建 ${SWAP_GB}G 兜底 swap 文件"
 btrfs filesystem mkswapfile --size "${SWAP_GB}g" "$MNT/swap/swapfile" >/dev/null
@@ -220,10 +250,11 @@ WIN11=$WIN11
 AUDIO=$AUDIO
 BACKUP=$(if [[ $BACKUP =~ ^https?:// ]]; then echo "$BACKUP"; elif [[ -n $BACKUP ]]; then echo /mnt/l4c-backup; fi)
 USER_SHELL=${M[USER_SHELL]:-/usr/bin/zsh}
+BOOT_ID=$BOOT_ID
 EOF
 
 info "配置新系统"
-L4C_YES=$L4C_YES_SAVED manjaro-chroot "$MNT" bash /opt/linux-for-chromebook/install/chroot-setup.sh
+L4C_YES=$L4C_YES_SAVED "$CHROOT" "$MNT" bash /opt/linux-for-chromebook/install/chroot-setup.sh
 
 if [[ -n $BACKUP && ! $BACKUP =~ ^https?:// ]]; then umount "$MNT/mnt/l4c-backup" 2>/dev/null || true; fi
 rm -f "$MNT/root/l4c-install.env"

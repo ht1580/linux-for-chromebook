@@ -1,13 +1,8 @@
-# 基础系统（全新安装用）。内核和固件由安装器单独处理。
+# 基础系统（全新安装用，各发行版通用）。内核和固件由安装器单独处理；
+# 发行版专属的包在 base-<发行版>.txt 里（manjaro / arch / cachyos）。
 base
-manjaro-system
-manjaro-release
-manjaro-keyring
 archlinux-keyring
-pacman-mirrors
 pacman-contrib
-mhwd
-mhwd-db
 intel-ucode
 sof-firmware
 mkinitcpio

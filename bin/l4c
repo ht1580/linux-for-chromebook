@@ -25,7 +25,7 @@ linux-for-chromebook $L4C_VERSION
     look                    Win11 外观：登录/锁屏界面、壁纸、黑屏屏保、通知、开始菜单、光标
     undo-desktop <备份目录> 恢复修改前的桌面设置
   全新安装
-    install                 在 Manjaro 启动 U 盘里运行，全新安装优化版系统
+    install                 在 Manjaro / CachyOS / Arch 启动 U 盘里运行，全新安装优化版系统
   设备扫描与远程
     scan [--send <地址>]    生成详细的设备报告（硬件、eMMC 健康、存储、电池……）
     remote on|off|status    临时开启 SSH，让 Windows 上的 Claude Code 等连接本机

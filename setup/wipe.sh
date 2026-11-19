@@ -77,13 +77,13 @@ do_efi() {
   ok "删除了 $n 个失效的启动项"
 }
 
-is_live() { [[ -d /run/miso ]] || grep -qE '(^| )(misobasedir|archisobasedir)=' /proc/cmdline; }
 
 do_disk() {
   local dev=${1:?需要硬盘设备，例如 /dev/mmcblk0}
   [[ -b $dev && $(lsblk -dno TYPE "$dev") == disk ]] || die "$dev 不是一块硬盘"
   is_live || die "为了安全，整盘擦除只能在启动 U 盘（Live 系统）里运行"
-  local root_disk; root_disk=$(lsblk -no PKNAME "$(findmnt -no SOURCE /run/miso/bootmnt 2>/dev/null)" 2>/dev/null || true)
+  local root_disk src; src=$(findmnt -no SOURCE "$(live_bootmnt)" 2>/dev/null || true)
+  root_disk=$(lsblk -no PKNAME "$src" 2>/dev/null || true); [[ -n $root_disk || -z $src ]] || root_disk=$(basename "$src")
   [[ /dev/$root_disk != "$dev" ]] || die "$dev 是当前启动用的 U 盘"
   if lsblk -no MOUNTPOINTS "$dev" | grep -q .; then
     warn "$dev 上有已挂载的分区，正在卸载"

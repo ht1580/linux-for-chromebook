@@ -1,0 +1,7 @@
+# CachyOS 专属：软件源密钥和镜像列表。CachyOS 会按 CPU 选用 x86-64-v3 编译的软件源
+# （N100 支持 v3），安装器用 pacstrap -P 把 Live 系统的软件源配置带进新系统。
+# 不装 cachyos-settings：它自带的 zram / sysctl 设置和 l4c 的重复，以 l4c 的为准。
+cachyos-keyring
+cachyos-mirrorlist
+cachyos-v3-mirrorlist
+cachyos-rate-mirrors

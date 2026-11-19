@@ -79,6 +79,12 @@ sudo l4c scan            # 生成 ~/l4c-scan-*.md
 - [ ] ChromeOS：`recovery2.json` 字段名和 SHA1 校验对象；ChromeOS Flex 下载地址
 - [ ] 新系统里 `vainfo` 显示 iHD，Chrome 的 `chrome://gpu` 里 Video Decode 为硬件加速
 
+## 发行版
+
+`lib/common.sh` 的 `l4c_distro` 返回 manjaro / cachyos / arch（其他 Arch 系按 arch）。安装器、软件包列表（`install/packages/base-<发行版>.txt`）、
+`kexec-live.sh`（miso / archiso）都按它分支；`grub_regen` 代替 Manjaro 才有的 update-grub。**CachyOS / Arch 路径还没在真机上装过。**
+Windows 工具（`windows/l4c-win.ps1`）制作 U 盘时仍只下载 Manjaro 镜像。
+
 ## 路线图
 
 下一次更新：Win11 风格的任务管理器（方案对比见 [docs/roadmap.md](docs/roadmap.md)）。版本变化记在 [CHANGELOG.md](CHANGELOG.md)。

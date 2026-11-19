@@ -3,7 +3,8 @@
 把 **HP Chromebook 11（主板代号 Yavilla，Intel N100，4G 内存，32G eMMC）** 变成一台
 **省内存、省空间、用起来像 Windows 11** 的电脑，并且可以**完整迁移**旧系统里的软件、设置、个人文件和 Wi-Fi。
 
-基于 Manjaro（Arch）+ 精简 Xfce。所有功能都是 shell 脚本，可以随时查看和修改。
+基于 Arch 系发行版 + 精简 Xfce：**Manjaro、CachyOS、Arch 都支持**（用哪个的启动 U 盘就装哪个；CachyOS 的软件包按 N100 支持的 x86-64-v3 指令集编译，性能最好）。
+所有功能都是 shell 脚本，可以随时查看和修改。
 
 **2026-11 已在这台 Chromebook 上实机全新安装并逐项核对**，见 [更新日志](CHANGELOG.md)；接下来要做的见 [路线图](docs/roadmap.md)。
 
@@ -62,7 +63,8 @@ l4c look          # Windows 11 外观：登录/锁屏、壁纸、任务栏、^ �
 ### C. 只用 U 盘全新安装
 
 1. 导出迁移包到 U 盘（建议 exFAT 格式）：`l4c export -o /run/media/$USER/你的U盘`
-2. 用 [Manjaro Xfce 启动 U 盘](https://manjaro.org/products/download/x86) 启动 Chromebook，连上 Wi-Fi
+2. 用 [Manjaro Xfce](https://manjaro.org/products/download/x86)、[CachyOS](https://cachyos.org/download/) 或 [Arch](https://archlinux.org/download/) 的启动 U 盘启动 Chromebook，连上 Wi-Fi
+   （镜像直接写进 U 盘：dd，或 Rufus 的 DD 模式）
    （开发者模式界面按 Ctrl+L，看到 UEFI 画面时按 Esc 选 U 盘；**原厂固件来不及按 Esc 时**，在旧系统里运行
    `sudo bash setup/kexec-live.sh` 直接热启动到 U 盘）
 3. 打开终端：
@@ -72,6 +74,7 @@ l4c look          # Windows 11 外观：登录/锁屏、壁纸、任务栏、^ �
    ```
 
 4. 按提示选择迁移包、硬盘、用户名，安装器自动完成分区、安装、键盘声卡适配、导入数据
+   （从 Manjaro 迁到 CachyOS / Arch 时，Manjaro 专属的软件会自动跳过；AUR 软件用 paru 或 yay 安装）
 
 ### 清除残存信息、装回 ChromeOS
 
@@ -226,7 +229,7 @@ windows/启动工具.bat        Windows 工具：接收、校验、转换、回�
 windows/l4c-win.ps1        Windows 工具本体（PowerShell）
 install/install.sh         全新安装器（在 Manjaro 启动 U 盘里运行）
 install/chroot-setup.sh    安装器在新系统里执行的配置步骤
-install/packages/*.txt     全新安装的软件包列表（可自行增删）
+install/packages/*.txt     全新安装的软件包列表：base / desktop 通用，base-<发行版>.txt 是各发行版专属的（可自行增删）
 config/                    各种配置文件
 docs/                      快捷键表、迁移说明、Windows 流程、ChromeOS、路线图
 CHANGELOG.md               更新日志

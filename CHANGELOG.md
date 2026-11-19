@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- **支持 CachyOS 和 Arch**：安装器按启动 U 盘的发行版选择 basestrap / pacstrap、内核（linux618 / linux-cachyos / linux）、镜像工具；
+  软件包列表拆成通用和各发行版专属；kexec 热启动认得 archiso（Arch / CachyOS）的 ISO；从 Manjaro 迁出时跳过 Manjaro 专属软件
+- 全新安装的软件包加上 Win11 任务栏需要的 xfce4-genmon-plugin、xdotool（之前漏了）
 - 浏览器省内存：Chrome / Chromium「节省内存」、Edge「睡眠标签页」系统级策略
 - QQ、哔哩哔哩：从开始菜单启动时加内存软上限（总内存的 1/4，systemd MemoryHigh）和较低的后台 CPU 优先级；超出部分压缩进 zram，不会被强制结束
 - 开机常驻再瘦身：可关掉 pamac 更新提醒托盘、蓝牙托盘（已配对设备照常连接）

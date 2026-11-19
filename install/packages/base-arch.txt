@@ -1,0 +1,2 @@
+# Arch 专属：按速度挑选镜像
+reflector

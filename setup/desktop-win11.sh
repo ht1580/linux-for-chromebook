@@ -70,7 +70,7 @@ install_system_look() {
   if [[ -f /etc/default/grub ]] && grep -q '^GRUB_TIMEOUT_STYLE=hidden' /etc/default/grub &&
      grep -qE '^GRUB_TIMEOUT=[2-9]' /etc/default/grub; then
     sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/' /etc/default/grub
-    { have update-grub && update-grub >/dev/null 2>&1; } || grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    grub_regen || true
     ok "开机菜单等待改为 1 秒"
   fi
 

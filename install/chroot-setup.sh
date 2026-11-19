@@ -47,17 +47,17 @@ info "引导程序"
 sed -i -E 's/^#?GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/; s/^#?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=true/' /etc/default/grub
 sed -i -E 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog zswap.enabled=0"/' /etc/default/grub
 GRUB_EFI=(--target=x86_64-efi --efi-directory=/boot/efi)
-if ! grub-install "${GRUB_EFI[@]}" --bootloader-id=Manjaro --recheck; then
+if ! grub-install "${GRUB_EFI[@]}" --bootloader-id="${C[BOOT_ID]:-Linux}" --recheck; then
   # 原厂固件的 RW_LEGACY 模式有时不让写 UEFI 启动项；它本来就只认下面的默认路径
   warn "无法写入 UEFI 启动项，改为只安装引导文件"
-  grub-install "${GRUB_EFI[@]}" --bootloader-id=Manjaro --no-nvram
+  grub-install "${GRUB_EFI[@]}" --bootloader-id="${C[BOOT_ID]:-Linux}" --no-nvram
 fi
 # 默认路径 \EFI\BOOT\BOOTX64.EFI：原厂固件（RW_LEGACY）开机按 Ctrl+L 时就是从这里启动
 if ! grub-install "${GRUB_EFI[@]}" --removable >/dev/null 2>&1; then
   if grep -qi '^Google_' /sys/class/dmi/id/bios_version 2>/dev/null; then
     die "默认引导路径安装失败。原厂固件只能从这个路径启动，继续的话新系统将无法开机"
   fi
-  warn "默认引导路径安装失败（MrChromebox 固件一般仍可从 Manjaro 启动项启动）"
+  warn "默认引导路径安装失败（MrChromebox 固件一般仍可从 UEFI 启动项启动）"
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 

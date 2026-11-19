@@ -1,0 +1,8 @@
+# Manjaro 专属：发行版信息、密钥、镜像选择、硬件检测、「添加/删除软件」应用商店
+manjaro-system
+manjaro-release
+manjaro-keyring
+pacman-mirrors
+mhwd
+mhwd-db
+pamac-gtk3

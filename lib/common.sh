@@ -132,4 +132,33 @@ urlencode() {
   printf '%s' "$out"
 }
 
+# ---------------------------------------------------------------- 发行版 ----
+# 支持 Manjaro、CachyOS、Arch；其他 Arch 系（EndeavourOS 等）按 Arch 处理
+l4c_distro() {
+  local ID="" ID_LIKE=""
+  local f=${L4C_OS_RELEASE:-/etc/os-release}   # 测试时可以指定别的文件
+  # shellcheck disable=SC1090
+  [[ -r $f ]] && . "$f"
+  case $ID in
+    manjaro|cachyos|arch) echo "$ID" ;;
+    *) [[ " $ID_LIKE " == *" arch "* ]] && echo arch || echo unknown ;;
+  esac
+}
+
+# 重新生成 GRUB 菜单：Manjaro 有 update-grub，Arch / CachyOS 没有
+grub_regen() {
+  if have update-grub; then update-grub >/dev/null 2>&1
+  elif have grub-mkconfig && [[ -d /boot/grub ]]; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
+  else return 0
+  fi
+}
+
+# 启动 U 盘（Live 系统）的挂载点：Manjaro 是 /run/miso/bootmnt，Arch / CachyOS 的 archiso 是 /run/archiso/bootmnt
+live_bootmnt() {
+  local m
+  for m in /run/miso/bootmnt /run/archiso/bootmnt; do mountpoint -q "$m" 2>/dev/null && { echo "$m"; return 0; }; done
+  return 0
+}
+is_live() { [[ -d /run/miso || -d /run/archiso ]] || grep -qE '(^| )(misobasedir|archisobasedir)=' /proc/cmdline; }
+
 human_size() { numfmt --to=iec --suffix=B "${1:-0}" 2>/dev/null || echo "${1}B"; }

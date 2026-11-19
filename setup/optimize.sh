@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 系统级性能与存储优化。可以在现有 Manjaro 上直接运行，也会被全新安装器调用。
+# 系统级性能与存储优化。可以在现有的 Manjaro / CachyOS / Arch 上直接运行，也会被全新安装器调用。
 #   sudo ./setup/optimize.sh            逐项询问
 #   sudo ./setup/optimize.sh --all      全部采用推荐设置
 #   sudo ./setup/optimize.sh --clean    只做一次存储清理
@@ -146,9 +146,7 @@ add_kernel_params() {
     changed=1
   done
   ((changed)) || return 0
-  if have update-grub; then update-grub >/dev/null 2>&1 || warn "update-grub 失败"
-  elif have grub-mkconfig && [[ -d /boot/grub ]]; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
-  fi
+  grub_regen || warn "重新生成 GRUB 菜单失败"
 }
 
 step_kernel() {
@@ -258,7 +256,7 @@ EOF
 step_microcode() {
   grep -q GenuineIntel /proc/cpuinfo 2>/dev/null && pkg_installed amd-ucode || return 0
   as_root pacman -Rns --noconfirm amd-ucode >/dev/null 2>&1 || return 0
-  if have update-grub; then update-grub >/dev/null 2>&1 || true; fi
+  grub_regen || true
   ok "已删除用不到的 AMD 处理器微码"
 }
 

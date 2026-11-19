@@ -115,7 +115,7 @@ HOME_DIR=$(user_home "$USER_NAME")
 USER_GROUP=$(id -gn "$USER_NAME")
 
 # 新系统已经替换/优化掉的软件，不再装回来
-SKIP_RE='^(linux[0-9]+(-headers)?|linux|linux-lts|linux-firmware|grub|efibootmgr|os-prober|memtest86\+.*|mhwd.*|manjaro-.*-settings|calamares.*|noto-fonts-cjk|systemd-swap|zramswap|swapspace)$'
+SKIP_RE='^(linux[0-9]+(-headers)?|linux|linux-lts|linux-cachyos.*|linux-firmware|grub|efibootmgr|os-prober|memtest86\+.*|mhwd.*|manjaro-.*|pamac.*|calamares.*|cachyos-.*|noto-fonts-cjk|systemd-swap|zramswap|swapspace)$'
 
 restore_packages() {
   [[ -s $SRC/packages/native.txt ]] || return 0
@@ -143,7 +143,9 @@ restore_packages() {
   if [[ -s $SRC/packages/foreign.txt ]]; then
     install -o "$USER_NAME" -g "$USER_GROUP" -m 644 "$SRC/packages/foreign.txt" "$HOME_DIR/需要从AUR安装的软件.txt"
     warn "有 $(wc -l <"$SRC/packages/foreign.txt") 个 AUR 软件需要登录后安装，清单在 ~/需要从AUR安装的软件.txt"
-    warn "安装方法：pamac build \$(cat ~/需要从AUR安装的软件.txt)   （或在「添加/删除软件」里启用 AUR）"
+    if have pamac; then warn "安装方法：pamac build \$(cat ~/需要从AUR安装的软件.txt)   （或在「添加/删除软件」里启用 AUR）"
+    else warn "安装方法：paru -S \$(cat ~/需要从AUR安装的软件.txt)   （CachyOS 自带 paru；Arch 先装 yay 或 paru）"
+    fi
   fi
   ((${#missing[@]})) && warn "这些软件在新系统的软件源里找不到或安装失败：${missing[*]}"
   return 0
