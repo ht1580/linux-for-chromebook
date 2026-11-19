@@ -1,0 +1,3 @@
+# l4c: 内存快用光时优先结束浏览器标签页等，而不是让整机卡死
+# 注意：systemd 按空格拆分参数且不认引号，正则里不能有空格（用 . 代替）
+EARLYOOM_ARGS="-m 4 -s 10 -r 0 --avoid (^|/)(Xorg|xfwm4|xfce4-session|xfce4-panel|xfdesktop|lightdm|systemd|pipewire|wireplumber|keyd|fcitx5|NetworkManager)$ --prefer (^|/)(Web.Content|Isolated.Web.Co|chrome|chromium|electron|code)$"

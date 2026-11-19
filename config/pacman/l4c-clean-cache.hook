@@ -1,0 +1,13 @@
+# l4c: 每次安装/升级后只保留每个软件包的最新一个缓存版本
+[Trigger]
+Operation = Upgrade
+Operation = Install
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = l4c: 清理旧的软件包缓存...
+When = PostTransaction
+Exec = /bin/sh -c '/usr/bin/paccache -rqk1; /usr/bin/paccache -ruqk0'
+Depends = pacman-contrib

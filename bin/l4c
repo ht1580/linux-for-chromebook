@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# l4c —— linux-for-chromebook 管理命令
+set -Eeuo pipefail
+L4C_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+export L4C_ROOT
+source "$L4C_ROOT/lib/common.sh"
+
+usage() {
+  cat <<USAGE
+linux-for-chromebook $L4C_VERSION
+
+用法: l4c <命令> [参数]
+
+  迁移
+    export -o <U盘目录>     导出迁移包（软件清单、设置、个人文件、Wi-Fi、蓝牙）
+    import <迁移包目录>     导入迁移包到本系统
+  在现有系统上优化（不重装）
+    optimize [--all]        内存（zram/earlyoom）、存储、eMMC、视频解码等优化
+    clean                   清理存储空间
+    keyboard                Chromebook 键盘映射（Windows 习惯）
+    audio                   安装 Chromebook 声卡驱动
+    desktop [--theme]       Windows 11 风格桌面和快捷键
+    theme                   下载安装 Fluent（Win11 风格）主题和图标
+    undo-desktop <备份目录> 恢复修改前的桌面设置
+  全新安装
+    install                 在 Manjaro 启动 U 盘里运行，全新安装优化版系统
+  其他
+    status                  查看内存、压缩、存储状态
+    info                    查看机型和固件信息
+    self-install            把本工具安装到 /opt 并提供 l4c 命令
+    help                    显示本帮助
+USAGE
+}
+
+status() {
+  echo "── 内存 ──"; free -h
+  echo; echo "── 压缩内存 zram ──"; zramctl 2>/dev/null || echo "未启用（运行 l4c optimize）"
+  echo; echo "── swap ──"; swapon --show 2>/dev/null || true
+  echo; echo "── 存储 ──"; df -h / /home 2>/dev/null | awk '!seen[$0]++'
+  if [[ $(findmnt -no FSTYPE /) == btrfs ]]; then
+    if have compsize; then echo; echo "── btrfs 压缩效果 ──"; sudo compsize -x / 2>/dev/null | head -4
+    else echo "（安装 compsize 可查看压缩效果：sudo pacman -S compsize）"
+    fi
+  fi
+  echo; echo "── 占空间 ──"
+  printf '  软件包缓存  %s\n' "$(du -sh /var/cache/pacman/pkg 2>/dev/null | cut -f1)"
+  printf '  系统日志    %s\n' "$(journalctl --disk-usage 2>/dev/null | grep -oE '[0-9.]+[KMG]' | head -1)"
+  printf '  用户缓存    %s\n' "$(du -sh "$HOME/.cache" 2>/dev/null | cut -f1)"
+  echo; echo "── 服务 ──"
+  local s; for s in earlyoom keyd power-profiles-daemon; do
+    printf '  %-22s %s\n' "$s" "$(systemctl is-active "$s" 2>/dev/null || true)"
+  done
+}
+
+cmd=${1:-help}; shift || true
+case $cmd in
+  export)       exec "$L4C_ROOT/migrate/export.sh" "$@" ;;
+  import)       exec sudo "$L4C_ROOT/migrate/import.sh" "$@" ;;
+  optimize)     exec sudo "$L4C_ROOT/setup/optimize.sh" "$@" ;;
+  clean)        exec sudo "$L4C_ROOT/setup/optimize.sh" --clean ;;
+  keyboard)     exec sudo "$L4C_ROOT/setup/chromebook.sh" keyboard ;;
+  audio)        exec "$L4C_ROOT/setup/chromebook.sh" audio ;;
+  info)         exec "$L4C_ROOT/setup/chromebook.sh" info ;;
+  desktop)      exec "$L4C_ROOT/setup/desktop-win11.sh" "$@" ;;
+  theme)        exec sudo "$L4C_ROOT/setup/desktop-win11.sh" --install-theme ;;
+  undo-desktop) exec "$L4C_ROOT/setup/desktop-win11.sh" --restore "$@" ;;
+  install)      exec sudo "$L4C_ROOT/install/install.sh" "$@" ;;
+  status)       status ;;
+  self-install)
+    sudo rm -rf /opt/linux-for-chromebook.new
+    sudo cp -a "$L4C_ROOT" /opt/linux-for-chromebook.new
+    sudo rm -rf /opt/linux-for-chromebook
+    sudo mv /opt/linux-for-chromebook.new /opt/linux-for-chromebook
+    sudo ln -sf /opt/linux-for-chromebook/bin/l4c /usr/local/bin/l4c
+    ok "已安装，现在可以在任何地方运行 l4c" ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac
