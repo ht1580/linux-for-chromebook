@@ -3,6 +3,7 @@ xorg-server
 xf86-input-libinput
 mesa
 intel-media-driver
+libva-utils
 lightdm
 lightdm-gtk-greeter
 polkit-gnome
@@ -37,6 +38,7 @@ pipewire
 pipewire-pulse
 pipewire-alsa
 wireplumber
+alsa-utils
 pavucontrol
 bluez
 bluez-utils

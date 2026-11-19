@@ -6,7 +6,7 @@
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
-SWAPFILE_SIZE_GB="${SWAPFILE_SIZE_GB:-2}"   # zram 之外保留的小 swap 文件（兜底用）
+SWAPFILE_SIZE_GB="${SWAPFILE_SIZE_GB:-1}"   # zram 之外保留的小 swap 文件（兜底用；32G eMMC 上 1G 足够）
 MODE=interactive
 case "${1:-}" in
   --all) L4C_YES=1 ;;
@@ -24,12 +24,14 @@ step_zram() {
   pkg_install zram-generator
   put_config systemd/zram-generator.conf /etc/systemd/zram-generator.conf
   put_config systemd/99-l4c-sysctl.conf /etc/sysctl.d/99-l4c.conf
+  put_config systemd/l4c-mm.conf /etc/tmpfiles.d/l4c-mm.conf   # 透明大页 madvise + MGLRU 防卡顿
   add_kernel_params zswap.enabled=0   # zram 与 zswap 不要同时用
   if [[ $L4C_CHROOT == 1 ]]; then ok "zram 已配置（重启后生效）"; return 0; fi
 
   systemctl daemon-reload
   systemctl start systemd-zram-setup@zram0.service 2>/dev/null || warn "zram 将在重启后生效"
   sysctl --system >/dev/null
+  systemd-tmpfiles --create /etc/tmpfiles.d/l4c-mm.conf 2>/dev/null || true
   echo 0 >/sys/module/zswap/parameters/enabled 2>/dev/null || true
   ok "zram 已启用：$(zramctl --noheadings --output DISKSIZE /dev/zram0 2>/dev/null | xargs) 压缩内存"
   shrink_swapfiles
@@ -156,11 +158,64 @@ step_video() {
   confirm "启用 Intel 硬件视频解码（看视频 CPU 占用大幅下降）？" y || return 0
   pkg_install intel-media-driver
   set_block /etc/environment vaapi "LIBVA_DRIVER_NAME=iHD"
+  # i965 旧驱动不支持 N100（Alder Lake-N），装着只会让程序选错驱动
+  if pkg_installed libva-intel-driver && [[ $(lspci -n 2>/dev/null) == *8086:46d* ]]; then
+    as_root pacman -Rns --noconfirm libva-intel-driver >/dev/null 2>&1 || true
+  fi
   if [[ -d /usr/lib/firefox ]]; then
     put_config firefox/l4c-chromebook.js /usr/lib/firefox/defaults/pref/l4c-chromebook.js
     ok "Firefox 已改为内存缓存 + 硬件解码 + 低内存时自动休眠标签页"
   fi
+  browser_vaapi_flags
   ok "硬件视频解码已启用"
+}
+
+# Chrome / Edge / Chromium 在 Linux 上默认不用 VA-API，需要用户目录里的 *-flags.conf 打开
+browser_vaapi_flags() {
+  local user home f p
+  user=$(target_user); home=$(user_home "$user")
+  [[ -n $home && -d $home && $user != root ]] || return 0
+  [[ -d $home/.config ]] || { mkdir -p "$home/.config"; chown "$user:" "$home/.config"; }
+  for f in chrome-flags.conf chromium-flags.conf microsoft-edge-stable-flags.conf; do
+    p=$home/.config/$f
+    if [[ -f $p ]] && grep -q -- '--enable-features' "$p"; then
+      grep -q 'AcceleratedVideoDecodeLinuxGL' "$p" || warn "$p 里已有 --enable-features，请手动加上 AcceleratedVideoDecodeLinuxGL"
+      continue
+    fi
+    cat "$L4C_ROOT/config/browser/chromium-vaapi-flags.conf" >>"$p"
+    chown "$user:" "$p"
+  done
+  ok "Chrome / Edge 已开启硬件视频解码（重新打开浏览器后生效，可在 chrome://gpu 查看）"
+}
+
+# ---------------------------------------------------------------- 网络 ----
+step_wifi() {
+  [[ -d /etc/NetworkManager ]] || return 0
+  confirm "关闭 Wi-Fi 省电模式？（本机实测省电模式下频繁丢信号；关闭后网络更稳定，待机耗电略增）" y || return 0
+  put_config networkmanager/50-l4c-wifi-powersave.conf /etc/NetworkManager/conf.d/50-l4c-wifi-powersave.conf
+  if [[ $L4C_CHROOT != 1 ]]; then
+    local dev
+    for dev in /sys/class/net/*/wireless; do
+      dev=$(basename "$(dirname "$dev")")
+      have iw && iw dev "$dev" set power_save off 2>/dev/null || true
+    done
+  fi
+  ok "Wi-Fi 省电模式已关闭"
+}
+
+# ---------------------------------------------------------------- 电池 ----
+# 新内核的 cros_charge_control 驱动可以让 Chromebook 的 EC 在指定电量停止充电
+step_battery() {
+  local b
+  b=$(find /sys/class/power_supply/ -maxdepth 1 -name 'BAT*' 2>/dev/null | head -1)
+  [[ -n $b && -e $b/charge_control_end_threshold ]] || return 0
+  confirm "这台 Chromebook 常插着电源用吗？把充电上限设为 80% 可以明显延长电池寿命" n || return 0
+  cat >/etc/udev/rules.d/61-l4c-battery.rules <<EOF
+# l4c: 充到 80% 停止充电（删除本文件并重启即可恢复充满）
+ACTION=="add|change", SUBSYSTEM=="power_supply", KERNEL=="$(basename "$b")", ATTR{charge_control_end_threshold}="80"
+EOF
+  [[ $L4C_CHROOT == 1 ]] || { echo 80 >"$b/charge_control_end_threshold"; } 2>/dev/null || warn "当前内核不接受这个设置，重启后再看"
+  ok "充电上限：80%"
 }
 
 step_input() {
@@ -170,8 +225,22 @@ step_input() {
 }
 
 step_services() {
-  [[ $L4C_CHROOT == 1 ]] && return 0
   local s
+  # 开机等联网：只有网络硬盘才需要。本机实测它让开机多等 4.4 秒（ZeroTier 等服务会拖着它）
+  if systemctl is-enabled NetworkManager-wait-online.service >/dev/null 2>&1 &&
+     ! grep -qE '^[^#]*[[:space:]](nfs4?|cifs|smb3|fuse\.sshfs)[[:space:]]' /etc/fstab 2>/dev/null; then
+    confirm "开机时不再等待 Wi-Fi 连上（开机快约 4 秒，联网照常在后台完成）？" y &&
+      systemctl disable NetworkManager-wait-online.service >/dev/null 2>&1 && ok "已关闭开机等待联网"
+  fi
+  # 说明文档已经不安装了（NoExtract），每天重建 man 索引只是白白读写硬盘
+  if grep -q 'l4c:noextract' /etc/pacman.conf 2>/dev/null && systemctl is-enabled man-db.timer >/dev/null 2>&1; then
+    systemctl disable man-db.timer >/dev/null 2>&1 && ok "已关闭 man-db 索引定时任务"
+  fi
+  [[ $L4C_CHROOT == 1 ]] && return 0
+  if systemctl is-enabled cronie.service >/dev/null 2>&1 && [[ -z $(find /var/spool/cron -type f 2>/dev/null) ]] &&
+     confirm "没有计划任务，关闭 cronie 服务？" y; then
+    systemctl disable --now cronie.service >/dev/null 2>&1 && ok "已关闭 cronie.service"
+  fi
   for s in cups.service cups.socket avahi-daemon.service ModemManager.service; do
     systemctl is-enabled "$s" >/dev/null 2>&1 || continue
     case $s in
@@ -225,6 +294,8 @@ step_disk
 step_kernel
 step_video
 step_input
+step_wifi
+step_battery
 step_services
 if [[ $L4C_CHROOT != 1 ]] && confirm "最后做一次存储清理？" y; then step_clean; fi
 ok "优化完成。建议重启一次让所有设置生效。"

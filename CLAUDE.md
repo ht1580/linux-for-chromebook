@@ -1,21 +1,25 @@
 # CLAUDE.md —— 给在 Windows 电脑（ht1580）上运行的 Claude Code 的说明
 
-本仓库为**一台具体的 HP Chromebook** 定制系统和工具。之前的开发在云端 Linux 容器里完成，**没有接触过真机**。
+本仓库为**一台具体的 HP Chromebook** 定制系统和工具。最初的开发在云端 Linux 容器里完成；2026-11-18 起已通过局域网 SSH 在真机上扫描验证（见下表）。
 接下来的会话会在用户的 Windows 11 电脑上运行，并通过局域网连接这台 Chromebook，扫描真实硬件后继续优化。
 
-## 目标设备（来自用户提供的 fastfetch 输出，未经实机扫描验证）
+## 目标设备（2026-11-18 通过 SSH 实机扫描确认）
 
-| 项目 | 已知信息 |
+| 项目 | 实测 |
 |---|---|
-| 机型 | HP Chromebook 11（Host 显示 `Yavilla (rev3)`，Google Nissa 平台） |
-| CPU / GPU | Intel N100，4 核；Intel UHD 核显 |
-| 内存 | 3.66 GiB（焊死）；当时已用 90%，swap 7.83 GiB 已用 5.46 GiB |
-| 存储 | 根分区 ext4 28.28 GiB，已用 89%（推测 32G eMMC；swap 可能是根分区上的 swap 文件） |
-| 屏幕 | 1366×768，12 寸 |
-| 网卡 | `wlp0s20f3`（PCI 00:14.3，推测 Intel CNVi） |
-| 系统 | Manjaro stable，内核 6.18.49-1-MANJARO，Xfce 4.20 / X11，zsh，Fluent 主题，Bibata 光标，Noto Sans CJK SC，locale zh_CN.utf8 |
-| 固件 | 能装 Manjaro，推测是 MrChromebox UEFI 完整固件，**未确认** |
-| 软件 | pacman 1238 个，flatpak 6 个 |
+| 机型 | HP Chromebook 11，DMI `Google Yavilla`（product_family `Google_Nissa`，Alder Lake-N） |
+| 固件 | **原厂 Google 固件** `Google_Yavilla.15217.864.0`（coreboot），开发者模式 + RW_LEGACY（EDK II UEFI）启动。**不是 MrChromebox**，eMMC 上没有也不需要 `*stock*.rom` |
+| CPU / GPU | Intel N100 4 核（支持 x86-64-v3）；UHD 核显 8086:46d1，i915 + GuC/HuC 正常加载 |
+| 内存 | 3.66 GiB；旧系统 zram 7.3G（zstd）+ `/swapfile` 512M；swappiness 100、page-cluster 3、THP always |
+| 存储 | eMMC `MMC32G` 29.2 GiB，HS400 ES + CQE，寿命 0x02/0x02（已用 10~20%），pre_eol 正常；p1 vfat 300M（EFI），p2 ext4（93% 满） |
+| 屏幕 / 背光 | 1366×768，`intel_backlight`；有键盘背光 `chromeos::kbd_backlight` |
+| 键盘 | i8042 `AT Translated Set 2 keyboard`，keyd ID `0001:0001`；physmap `EA E7 91 92 93 94 95 A0 AE B0` = 返回 刷新 全屏 概览 截图 亮度- 亮度+ 静音 音量- 音量+ |
+| 触控板 | Elan I2C 04f3:0140 |
+| 声卡 | SOF IPC3 `sof-adl-n.ri` + 拓扑 `sof-adl-max98360a-rt5682.tplg`，codec RT5682S，功放 MAX98360A，声卡名 `sof-rt5682`。**旧系统没有 UCM → PipeWire 只有 auto_null（没声音）** |
+| 网卡 | Intel CNVi 8086:54f0（iwlwifi，固件 89），省电模式开着时大量 missed beacons 告警 |
+| 电池 | BAT0 支持 `charge_control_start/end_threshold`、`charge_behaviour`（cros_charge_control） |
+| 系统 | Manjaro，内核 6.18.49，Xfce 4.20/X11 + picom，开机 10.2 秒（NetworkManager-wait-online 占 4.4 秒，被 zerotier-one 拖进关键路径） |
+| 视频解码 | 旧系统只有 `libva-intel-driver`（i965，不支持 ADL-N），**没有 iHD → 没有硬件解码** |
 
 ## 用户的计划与要求
 
@@ -49,17 +53,25 @@ sudo l4c scan            # 生成 ~/l4c-scan-*.md
 
 ## 待实机验证（按风险排序）
 
-- [ ] 固件类型（`l4c chromeos check`）：是不是 MrChromebox UEFI；有没有原厂固件备份 `*stock*.rom`——**全新安装会擦除整盘，备份若只在 eMMC 上就会永久丢失**
-- [ ] `install/install.sh`：Manjaro Live 上 `basestrap` / `manjaro-chroot` / `fstabgen` 是否可用；`pacman-mirrors` 用法；btrfs `mkswapfile`；GRUB 在 MrChromebox 上能否启动（同时装了 `--removable` 兜底）
-- [ ] `install/packages/*.txt` 包名是否都在 Manjaro 源里（`linux-firmware-intel` 拆分、`pamac-gtk3`、`xfce4-docklike-plugin`、`adobe-source-han-sans-cn-fonts`、内核包名 `linux618`），安装器会跳过不存在的包并告警
+已确认：固件类型（原厂 + RW_LEGACY，见上表）、键盘 physmap 与 keyd ID、eMMC 支持 discard（`DISC-GRAN 4M`）、声卡型号与缺 UCM 的原因、充电上限接口。
+
+- [ ] `install/install.sh`：Manjaro Live 上 `basestrap` / `manjaro-chroot` / `fstabgen` 是否可用；btrfs `mkswapfile`；RW_LEGACY 下 `grub-install` 写 NVRAM 是否成功（失败会自动改 `--no-nvram`，`--removable` 默认路径是必须的）
+- [ ] `install/packages/*.txt` 包名是否都在 Manjaro 源里（`pamac-gtk3`、`xfce4-docklike-plugin`、`adobe-source-han-sans-cn-fonts`、内核包名 `linux618`）
+- [ ] 声卡：`l4c audio`（固定 chromebook-linux-audio 84b700e，自动选菜单 1）装完后 `pactl list short sinks` 不再只有 auto_null；扬声器、耳机、内置麦克风（`dmic_num=4`）都要试
+- [ ] keyd：Alt+亮度键 = 键盘背光（`kbdillumdown/up`）在 xfce4-power-manager 下是否生效；Alt+F4、搜索键组合
 - [ ] `wipe.sh disk`：eMMC 是否支持 `blkdiscard -s`；擦除后抽查结果
-- [ ] 键盘：`/sys/devices/platform/**/function_row_physmap` 是否存在、内容格式；内置键盘的 keyd ID（默认 `0001:0001`）；Alt+F4、搜索键组合是否如预期
-- [ ] 声卡：WeirdTreeThing/chromebook-linux-audio 对 Nissa/Yavilla 是否有效；在 root / chroot 下能否运行
-- [ ] Xfce 面板 XML（`setup/desktop-win11.sh`）：`p=8` 是否是底部、`length` 类型（uint/double）、docklike rc 键名、whiskermenu xfconf 属性名、clock `digital-layout` 枚举
-- [ ] zram 大小（`min(ram*2, 8192)`）与 earlyoom 阈值是否合适，结合扫描报告里的内存占用调整
-- [ ] Windows 工具 `windows/l4c-win.ps1`：**从未在真实 Windows 上运行过**；需测试 HttpListener + 防火墙规则、大文件上传（分块）、中文路径、`netsh wlan export` 转换、`tar.exe` 是否支持 zstd、BITS 下载
-- [ ] ChromeOS：`recovery2.json` 的字段名（`hwidmatch`、`url`、`sha1`、`zipfilesize`、`name`、`version`）和 SHA1 校验对象（压缩包还是镜像）；ChromeOS Flex 下载地址
-- [ ] `vainfo` 是否显示 iHD 驱动和 H264/HEVC/VP9/AV1 解码
+- [ ] Xfce 面板 XML（`setup/desktop-win11.sh`）：`p=8` 是否是底部、`length` 类型、docklike rc 键名、whiskermenu 属性名、clock `digital-layout` 枚举
+- [ ] zram（`min(ram*2, 8192)`）+ earlyoom + MGLRU `min_ttl_ms=1000` 组合下，开 QQ + Chrome 时是否还会卡死
+- [ ] Wi-Fi 关闭省电后 missed beacons 告警是否消失（`journalctl -k | grep missed`）
+- [ ] Windows 工具 `windows/l4c-win.ps1`：**从未在真实 Windows 上运行过**；HttpListener + 防火墙、分块上传、中文路径、`netsh wlan export`、`tar.exe` zstd、BITS
+- [ ] ChromeOS：`recovery2.json` 字段名和 SHA1 校验对象；ChromeOS Flex 下载地址
+- [ ] 新系统里 `vainfo` 显示 iHD，Chrome 的 `chrome://gpu` 里 Video Decode 为硬件加速
+
+## 本机已有的备份（在 Windows 的 `D:\Chromebook迁移`）
+
+- `l4c-backup-<主机名>-20261118-2019/`：迁移包（home、system、软件清单、`extra/system-full.tar.zst` = 整个 /etc + ZeroTier 身份 + SSH 主机密钥 + /root + EFI）。安装器只自动导入 `system.tar.zst`，`extra/` 里的内容装好后手动放回
+- `<主机名>-mmcblk0-20261118.img.zst`：整块 eMMC 的 zstd 镜像（文件系统冻结时制作），可原样恢复旧系统
+- 注意：Windows 工具默认读 `%USERPROFILE%\Chromebook迁移`，不是 D 盘
 
 ## 代码约定
 

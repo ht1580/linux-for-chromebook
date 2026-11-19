@@ -286,7 +286,9 @@ restore_shell_services() {
   local s enable=()
   while read -r s; do
     case $s in
+      # 后面几项是 optimize.sh 特意关掉的（开机等联网、空的计划任务、man 索引），不要被旧系统的清单重新打开
       getty@*|systemd-*|display-manager*|dbus*|*@.service|cups*|avahi*|ModemManager*) continue ;;
+      NetworkManager-wait-online*|cronie*|man-db*) continue ;;
     esac
     systemctl cat "$s" >/dev/null 2>&1 || continue
     systemctl is-enabled "$s" >/dev/null 2>&1 && continue

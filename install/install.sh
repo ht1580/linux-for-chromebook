@@ -5,21 +5,23 @@
 #
 # 与官方安装器的区别：
 #   • btrfs + zstd 透明压缩（系统文件通常压缩到原来的 50~70%）
-#   • 不建 8G swap，改用 zram 压缩内存 + 2G 兜底 swap 文件
+#   • 不建 8G swap，改用 zram 压缩内存 + 1G 兜底 swap 文件
 #   • 精简的 Xfce 桌面，Windows 11 使用习惯，Chromebook 键盘/声卡适配
 #   • 可以选择迁移包（export.sh 生成），自动还原软件、设置、个人文件、Wi-Fi
 #
-# 环境变量（可选）：KERNEL=linux618  MIRROR_COUNTRY=China  SWAP_GB=2
+# 环境变量（可选）：KERNEL=linux618  MIRROR_COUNTRY=China  SWAP_GB=1
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
 KERNEL="${KERNEL:-linux618}"
-SWAP_GB="${SWAP_GB:-2}"
+SWAP_GB="${SWAP_GB:-1}"
 MNT=/mnt
 MOUNT_OPTS="noatime,compress=zstd:3,space_cache=v2,discard=async"
 
 require_root
-[[ -d /sys/firmware/efi ]] || die "没有以 UEFI 模式启动。Chromebook 需要先刷 MrChromebox 的 UEFI 固件（mrchromebox.tech）。"
+[[ -d /sys/firmware/efi ]] || die "没有以 UEFI 模式启动。原厂固件请在开发者模式下按 Ctrl+L 进入 RW_LEGACY（UEFI）再选 U 盘；或者刷 MrChromebox 的 UEFI 固件（mrchromebox.tech）。"
+# 原厂固件（开发者模式 + RW_LEGACY）：固件在主板芯片里，清空 eMMC 不会影响它
+STOCK_FW=0; grep -qi '^Google_' /sys/class/dmi/id/bios_version 2>/dev/null && STOCK_FW=1
 grep -qi manjaro /etc/os-release || die "请在 Manjaro 的启动 U 盘里运行本安装器。"
 mountpoint -q "$MNT" && die "$MNT 已被挂载，请先卸载：umount -R $MNT"
 
@@ -121,6 +123,11 @@ if grep -qi mrchromebox /sys/class/dmi/id/bios_version 2>/dev/null; then
     confirm "仍然继续安装？" y || die "已取消。可以先在旧系统里运行 l4c chromeos backup-firmware"
   fi
 fi
+if ((STOCK_FW)); then
+  warn "这台 Chromebook 是原厂固件（开发者模式启动 Linux）。装好后每次开机："
+  warn "  出现“操作系统验证已关闭”时按 Ctrl+L 启动新系统；千万不要按空格，否则会恢复 ChromeOS 并清空硬盘。"
+  warn "  想装回 ChromeOS 也很简单：用官方恢复 U 盘即可（l4c chromeos check）。"
+fi
 [[ $(ask "确认清空 $DISK 并安装？请输入大写 YES" "") == YES ]] || die "已取消，硬盘未做任何改动"
 WIPE=n; confirm "安装前彻底擦除整块硬盘的旧数据（旧系统和个人文件将无法被恢复，约 1~10 分钟）？" y && WIPE=y
 L4C_YES_SAVED=$L4C_YES
@@ -215,4 +222,5 @@ sync
 cleanup
 ok "安装完成！"
 echo "拔掉 U 盘后重启。首次登录会自动应用设置，之后可以用 l4c 命令管理（l4c help）。"
+((STOCK_FW)) && echo "开机出现“操作系统验证已关闭”时按 Ctrl+L（不要按空格）。"
 if confirm "现在重启？" y; then reboot; fi

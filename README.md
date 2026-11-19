@@ -85,11 +85,12 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 | 优化 | 效果 |
 |---|---|
 | **zram** 压缩内存（zstd，最多 2×内存） | 同样的 4G 能多装约一倍程序，比往 eMMC 上写 swap 快几十倍 |
-| 原来的 8G swap 文件缩小为 2G，只在 zram 用完时兜底 | 腾出约 6G 硬盘 |
+| 原来的 8G swap 文件缩小为 1G，只在 zram 用完时兜底 | 腾出约 7G 硬盘 |
 | **earlyoom** | 内存耗尽时先结束最占内存的浏览器标签页，而不是整机卡死几分钟 |
 | 内核参数（swappiness、page-cluster 等，针对 zram 调整） | 内存紧张时界面更跟手 |
+| 透明大页改为 madvise、MGLRU 保护最近 1 秒用过的内存（ChromeOS 同款） | 后台程序少占内存，内存紧张时不会反复卡顿 |
 | Firefox：内存缓存、低内存时自动休眠标签页、限制进程数 | 浏览器少占内存、少写硬盘 |
-| Intel 硬件视频解码（VA-API） | 看视频 CPU 占用明显下降，更省电 |
+| Intel 硬件视频解码（VA-API，iHD 驱动；去掉 N100 用不了的 i965 旧驱动；Chrome/Edge 自动加开关） | 看视频 CPU 占用明显下降，更省电 |
 
 ### 存储（32G eMMC）
 
@@ -109,7 +110,10 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 - eMMC 使用 bfq 调度器：后台装软件时前台不卡
 - 定期 TRIM，延长 eMMC 寿命并保持速度
 - 关闭硬件看门狗、精简开机日志：开机更快、更省电
-- 可选关闭打印、局域网发现、4G 上网卡等用不上的服务
+- 开机不再等待 Wi-Fi 连上（实测省 4.4 秒）；文档不装了，man-db 定时索引也关掉
+- 可选关闭打印、局域网发现、4G 上网卡、空的计划任务等用不上的服务
+- Wi-Fi 关闭省电模式：实测 Intel 无线网卡省电时频繁丢信号（missed beacons）
+- 可选充电上限 80%（Chromebook 的 EC 支持），常插电使用时延长电池寿命
 
 ### Chromebook 硬件适配
 
@@ -117,9 +121,11 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
   - 顶排按键：返回、刷新（F5）、全屏（F11）、窗口切换、亮度、音量
   - **搜索键 = Windows 键**；搜索键 + 顶排 = F1…F10
   - 补上 Chromebook 缺少的键：Alt+退格 = Delete，Alt+↑/↓ = PageUp/PageDown，Ctrl+Alt+↑/↓ = Home/End，Alt+搜索键 = CapsLock
-- **声卡**：调用社区项目 [chromebook-linux-audio](https://github.com/WeirdTreeThing/chromebook-linux-audio)（Linux 下 Chromebook 扬声器默认没有声音）
+  - 有键盘背光的机型：Alt+亮度键 = 背光调暗/调亮（和 ChromeOS 一样）
+- **声卡**：调用社区项目 [chromebook-linux-audio](https://github.com/WeirdTreeThing/chromebook-linux-audio)（固定到审阅过的版本，全自动运行）。实测本机声卡 `sof-rt5682`（RT5682S + MAX98360A）能被内核识别，但缺 UCM 配置，PipeWire 只有“虚拟输出”，即完全没声音
 - **触控板**：轻触点击，两指点击 = 右键
-- `l4c info` 查看机型、固件（MrChromebox）、顶排键布局
+- `l4c info` 查看机型、固件（原厂 RW_LEGACY / MrChromebox）、顶排键布局、充电上限
+- **原厂固件也能装**：本机实测是原厂 Google 固件 + 开发者模式 + RW_LEGACY。安装器会把引导文件放到固件唯一认的默认路径；开机按 Ctrl+L，**不要按空格**（会恢复 ChromeOS 并清空硬盘）
 
 ### 像 Windows 11 一样用
 

@@ -46,8 +46,19 @@ chown -R "$U:" "/home/$U"
 info "引导程序"
 sed -i -E 's/^#?GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/; s/^#?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=true/' /etc/default/grub
 sed -i -E 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog zswap.enabled=0"/' /etc/default/grub
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Manjaro --recheck
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --removable >/dev/null 2>&1 || true   # 兜底：固件找不到启动项也能启动
+GRUB_EFI=(--target=x86_64-efi --efi-directory=/boot/efi)
+if ! grub-install "${GRUB_EFI[@]}" --bootloader-id=Manjaro --recheck; then
+  # 原厂固件的 RW_LEGACY 模式有时不让写 UEFI 启动项；它本来就只认下面的默认路径
+  warn "无法写入 UEFI 启动项，改为只安装引导文件"
+  grub-install "${GRUB_EFI[@]}" --bootloader-id=Manjaro --no-nvram
+fi
+# 默认路径 \EFI\BOOT\BOOTX64.EFI：原厂固件（RW_LEGACY）开机按 Ctrl+L 时就是从这里启动
+if ! grub-install "${GRUB_EFI[@]}" --removable >/dev/null 2>&1; then
+  if grep -qi '^Google_' /sys/class/dmi/id/bios_version 2>/dev/null; then
+    die "默认引导路径安装失败。原厂固件只能从这个路径启动，继续的话新系统将无法开机"
+  fi
+  warn "默认引导路径安装失败（MrChromebox 固件一般仍可从 Manjaro 启动项启动）"
+fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
 info "桌面与服务"
@@ -60,7 +71,7 @@ fi
 systemd_enable NetworkManager.service lightdm.service systemd-timesyncd.service bluetooth.service power-profiles-daemon.service
 
 info "性能与存储优化"
-L4C_YES=1 bash /opt/linux-for-chromebook/setup/optimize.sh
+L4C_YES=1 L4C_USER="$U" bash /opt/linux-for-chromebook/setup/optimize.sh   # L4C_USER：浏览器硬件解码等写进新用户目录
 info "Chromebook 键盘"
 bash /opt/linux-for-chromebook/setup/chromebook.sh keyboard || warn "键盘映射失败，进入系统后运行：sudo l4c keyboard"
 if [[ ${C[AUDIO]} == y ]]; then

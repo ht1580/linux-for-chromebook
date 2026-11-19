@@ -139,9 +139,18 @@ set +e +o pipefail; trap - ERR
   for f in /etc/systemd/zram-generator.conf /etc/sysctl.d/99-l4c.conf /etc/default/earlyoom \
            /etc/systemd/journald.conf.d/50-l4c-size.conf /etc/pacman.d/hooks/l4c-clean-cache.hook \
            /etc/udev/rules.d/60-l4c-ioscheduler.rules /etc/keyd/l4c-chromebook.conf \
-           /etc/X11/xorg.conf.d/30-l4c-touchpad.conf /usr/lib/firefox/defaults/pref/l4c-chromebook.js; do
+           /etc/X11/xorg.conf.d/30-l4c-touchpad.conf /usr/lib/firefox/defaults/pref/l4c-chromebook.js \
+           /etc/tmpfiles.d/l4c-mm.conf /etc/NetworkManager/conf.d/50-l4c-wifi-powersave.conf \
+           /etc/udev/rules.d/61-l4c-battery.rules /etc/modprobe.d/adl-sof.conf "$H/.config/chrome-flags.conf"; do
     echo "- $([[ -e $f ]] && echo '✓' || echo '✗') \`$f\`"
   done
+  echo "- 透明大页：$(rd /sys/kernel/mm/transparent_hugepage/enabled)　MGLRU min_ttl_ms：$(rd /sys/kernel/mm/lru_gen/min_ttl_ms)"
+  echo "- VA-API 驱动：${LIBVA_DRIVER_NAME:-$(grep -h '^LIBVA_DRIVER_NAME' /etc/environment 2>/dev/null | cut -d= -f2)}　i965 旧驱动：$(pkg_installed libva-intel-driver && echo '已安装（N100 用不了）' || echo '无')"
+  echo "- Wi-Fi 省电：$(for w in /sys/class/net/*/wireless; do iw dev "$(basename "$(dirname "$w")")" get power_save 2>/dev/null; done | tr '\n' ' ')"
+  for b in /sys/class/power_supply/BAT*; do
+    [[ -e $b/charge_control_end_threshold ]] && echo "- 充电上限：$(rd "$b/charge_control_end_threshold")%"
+  done
+  echo "- 开机等待联网：$(systemctl is-enabled NetworkManager-wait-online.service 2>/dev/null || true)"
   echo "- pacman NoExtract：$(grep -q 'l4c:noextract' /etc/pacman.conf 2>/dev/null && echo '✓' || echo '✗')"
 
   sec "最近的错误日志"
