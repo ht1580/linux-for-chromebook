@@ -4,6 +4,7 @@
 #   sudo ./setup/optimize.sh --all      全部采用推荐设置
 #   sudo ./setup/optimize.sh --clean    只做一次存储清理
 #   sudo ./setup/optimize.sh --ram      只精简开机常驻程序（省内存）
+#   sudo ./setup/optimize.sh --remove-wine  删除 wine 和 32 位库（不用 Windows 程序时）
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
@@ -13,7 +14,8 @@ case "${1:-}" in
   --all) L4C_YES=1 ;;
   --clean) MODE=clean ;;
   --ram) MODE=ram ;;
-  -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
+  --remove-wine) REMOVE_WINE=1; MODE=wine ;;
+  -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
   "") ;;
   *) die "未知参数: $1" ;;
 esac
@@ -226,6 +228,65 @@ step_input() {
   ok "触控板已设置（重新登录后生效）"
 }
 
+# 浏览器省内存：Chrome / Chromium「节省内存」、Edge「睡眠标签页」，用系统级策略文件开启（浏览器里会显示「由组织管理」）
+# 4G 内存里浏览器是最大的用户，后台标签页休眠后每个能省几十到几百 MB
+step_browser_memory() {
+  confirm "让 Chrome / Edge 的后台标签页自动休眠以节省内存（切回来时会重新加载）？" y || return 0
+  local d
+  for d in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do
+    install -Dm 644 "$L4C_ROOT/config/browser/chrome-memory-policy.json" "$d/l4c-memory.json"
+  done
+  install -Dm 644 "$L4C_ROOT/config/browser/edge-memory-policy.json" /etc/opt/edge/policies/managed/l4c-memory.json
+  ok "浏览器：后台标签页自动休眠（重新打开浏览器后生效，chrome://policy 可以查看）"
+}
+
+# 拔掉电源自动切到省电模式，插上恢复平衡模式（power-profiles-daemon 本来就装着，只加一条 udev 规则）
+step_power_profile() {
+  have powerprofilesctl || return 0
+  find /sys/class/power_supply/ -maxdepth 1 -name 'BAT*' 2>/dev/null | grep -q . || return 0
+  confirm "拔掉电源时自动切到省电模式、插上电源恢复平衡模式？" y || return 0
+  cat >/etc/udev/rules.d/62-l4c-power-profile.rules <<'EOF'
+# l4c: 拔电省电，插电恢复平衡（删除本文件即可取消）
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="0", RUN+="/usr/bin/powerprofilesctl set power-saver"
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="1", RUN+="/usr/bin/powerprofilesctl set balanced"
+EOF
+  [[ $L4C_CHROOT == 1 ]] || udevadm control --reload 2>/dev/null || true
+  ok "电源模式：拔电自动省电，插电恢复平衡"
+}
+
+# 不是 AMD 处理器就不需要 AMD 微码（每次开机都会加载它）
+step_microcode() {
+  grep -q GenuineIntel /proc/cpuinfo 2>/dev/null && pkg_installed amd-ucode || return 0
+  as_root pacman -Rns --noconfirm amd-ucode >/dev/null 2>&1 || return 0
+  if have update-grub; then update-grub >/dev/null 2>&1 || true; fi
+  ok "已删除用不到的 AMD 处理器微码"
+}
+
+# 不用 wine 时：wine 和它带进来的 32 位库（lib32-*）能腾出几百 MB。默认不删，或用 --remove-wine 指定
+step_wine() {
+  pkg_installed wine || return 0
+  local user home pfx=() d
+  user=$(target_user); home=$(user_home "$user")
+  for d in "$home"/.wine "$home"/.wine-*; do [[ -d $d ]] && pfx+=("$d"); done
+  echo "wine 程序目录：${pfx[*]:-无}"
+  if [[ ${REMOVE_WINE:-0} != 1 ]]; then
+    confirm "不再使用 Windows 程序（wine）？删除 wine 和全部 32 位库（lib32-*）" n || return 0
+  fi
+  local pk; mapfile -t pk < <(pacman -Qq | grep -E '^(wine|wine-gecko|wine-mono|winetricks|lib32-.+)$')
+  local before; before=$(df --output=used -B1 / | tail -1)
+  if as_root pacman -Rns --noconfirm "${pk[@]}" >/dev/null 2>&1; then
+    ok "已删除 wine 和 32 位库（${#pk[@]} 个软件包），腾出 $(human_size $((before - $(df --output=used -B1 / | tail -1))))"
+  else
+    warn "有其他软件需要这些 32 位库（例如 Steam），没有删除"; return 0
+  fi
+  ((${#pfx[@]})) || return 0
+  # 删程序目录是删个人数据：一律默认「否」，自动模式下也不删
+  du -sh "${pfx[@]}" 2>/dev/null
+  confirm "同时删除上面这些 wine 程序目录（里面装的 Windows 程序和数据，删除后无法恢复）？" n &&
+    rm -rf "${pfx[@]}" && ok "已删除 wine 程序目录"
+  return 0
+}
+
 # 开机常驻程序瘦身：4G 内存里，开机就常驻的程序能省则省
 # （实测这台机器可用内存多出约 55 MB；Proton VPN 后台用过一次就会一直占着，峰值约 250 MB）
 step_ram_apps() {
@@ -245,6 +306,8 @@ step_ram_apps() {
   # 名称|原因（只在条件满足时关）
   local -a cand=(
     "copyq|和 Xfce 自带的剪贴板历史（Win+V）重复"
+    "pamac-tray|软件更新提醒（托盘图标和它拉起的后台服务，约 30 MB）；以后在「添加/删除软件」里手动检查更新"
+    "blueman|蓝牙托盘（约 50 MB）；已配对的耳机、鼠标照常自动连接，配对新设备时从开始菜单打开「蓝牙管理器」"
     "remmina-applet|远程桌面的托盘图标，不影响使用远程桌面"
     "msm_notifier|Manjaro 设置提醒（新内核/语言包）"
     "xiccd|屏幕颜色配置守护进程，Chromebook 屏幕用不到"
@@ -340,6 +403,7 @@ step_clean() {
 
 if [[ $MODE == clean ]]; then step_clean; exit 0; fi
 if [[ $MODE == ram ]]; then step_ram_apps; exit 0; fi
+if [[ $MODE == wine ]]; then step_wine; exit 0; fi
 
 info "linux-for-chromebook $L4C_VERSION 系统优化"
 step_zram
@@ -349,9 +413,13 @@ step_pacman
 step_disk
 step_kernel
 step_video
+step_browser_memory
 step_input
 step_wifi
 step_battery
+step_power_profile
+step_microcode
+step_wine
 step_ram_apps
 step_services
 if [[ $L4C_CHROOT != 1 ]] && confirm "最后做一次存储清理？" y; then step_clean; fi

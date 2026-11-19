@@ -98,6 +98,7 @@ l4c look          # Windows 11 外观：登录/锁屏、壁纸、任务栏、^ �
 | 内核参数（swappiness、page-cluster 等，针对 zram 调整） | 内存紧张时界面更跟手 |
 | 透明大页改为 madvise、MGLRU 保护最近 1 秒用过的内存（ChromeOS 同款） | 后台程序少占内存，内存紧张时不会反复卡顿 |
 | Firefox：内存缓存、低内存时自动休眠标签页、限制进程数 | 浏览器少占内存、少写硬盘 |
+| Chrome / Chromium「节省内存」、Edge「睡眠标签页」（系统级策略） | 后台标签页自动休眠，开多个标签页时省得最多 |
 | Intel 硬件视频解码（VA-API，iHD 驱动；去掉 N100 用不了的 i965 旧驱动；Chrome/Edge 自动加开关） | 看视频 CPU 占用明显下降，更省电 |
 | **开机常驻程序瘦身**（`l4c optimize --ram`）：Proton VPN 后台改为按需启动，关掉重复的剪贴板管理器、用不到的托盘小程序 | 实测可用内存多 55 MB；Proton VPN 后台用过一次就常驻（峰值约 250 MB），现在用完不再占着 |
 
@@ -123,6 +124,8 @@ l4c look          # Windows 11 外观：登录/锁屏、壁纸、任务栏、^ �
 - 可选关闭打印、局域网发现、4G 上网卡、空的计划任务等用不上的服务
 - Wi-Fi 关闭省电模式：实测 Intel 无线网卡省电时频繁丢信号（missed beacons）
 - 可选充电上限 80%（Chromebook 的 EC 支持），常插电使用时延长电池寿命
+- 拔掉电源自动切到省电模式，插上恢复平衡模式
+- 不用 Windows 程序时：`sudo l4c optimize --remove-wine` 删除 wine 和全部 32 位库（几百 MB）
 
 ### Chromebook 硬件适配
 
