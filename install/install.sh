@@ -10,6 +10,7 @@
 #   • 可以选择迁移包（export.sh 生成），自动还原软件、设置、个人文件、Wi-Fi
 #
 # 环境变量（可选）：KERNEL=linux618  MIRROR_COUNTRY=China  SWAP_GB=1
+#   L4C_BACKUP_URL=http://IP:8848/口令   预先填好迁移包地址（例如通过 ssh -R 隧道从 Windows 获取）
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
@@ -51,11 +52,11 @@ echo "迁移包来源："
 for i in "${!found[@]}"; do echo "  $((i + 1))) U 盘：${found[$i]}"; done
 echo "  w) 从 Windows 电脑通过局域网获取"
 echo "  0) 不导入，全新开始"
-sel=$(ask "请选择" "$([[ ${#found[@]} -gt 0 ]] && echo 1 || echo w)")
+sel=$(ask "请选择" "$([[ ${#found[@]} -gt 0 && -z ${L4C_BACKUP_URL:-} ]] && echo 1 || echo w)")
 if [[ $sel =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#found[@]})); then
   BACKUP=${found[$((sel - 1))]}
 elif [[ $sel == w || $sel == W ]]; then
-  base=$(ask "Windows 工具里显示的地址（形如 http://192.168.1.10:8848/口令）" "")
+  base=$(ask "Windows 工具里显示的地址（形如 http://192.168.1.10:8848/口令）" "${L4C_BACKUP_URL:-}")
   base=${base%/}
   [[ $base =~ ^https?:// ]] || die "地址格式不对"
   mapfile -t pk < <(curl -fsS -m 15 "$base/" | grep '^l4c-backup-' | sort -r) || true
