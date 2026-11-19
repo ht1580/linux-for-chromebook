@@ -3,6 +3,7 @@
 #   sudo ./setup/optimize.sh            逐项询问
 #   sudo ./setup/optimize.sh --all      全部采用推荐设置
 #   sudo ./setup/optimize.sh --clean    只做一次存储清理
+#   sudo ./setup/optimize.sh --ram      只精简开机常驻程序（省内存）
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
@@ -11,7 +12,8 @@ MODE=interactive
 case "${1:-}" in
   --all) L4C_YES=1 ;;
   --clean) MODE=clean ;;
-  -h|--help) sed -n '2,6p' "$0"; exit 0 ;;
+  --ram) MODE=ram ;;
+  -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
   "") ;;
   *) die "未知参数: $1" ;;
 esac
@@ -224,6 +226,58 @@ step_input() {
   ok "触控板已设置（重新登录后生效）"
 }
 
+# 开机常驻程序瘦身：4G 内存里，开机就常驻的程序能省则省（实测这台机器约 270 MB）
+step_ram_apps() {
+  # Proton VPN 的后台服务支持 D-Bus 按需启动：关掉开机常驻，打开 VPN 程序时会自动拉起（约 160 MB）
+  if systemctl is-enabled proton.VPN.service >/dev/null 2>&1 &&
+     compgen -G '/usr/share/dbus-1/system-services/me.proton.vpn.*.service' >/dev/null &&
+     confirm "Proton VPN 后台服务改为用到时才启动（开机少占约 160 MB 内存，用 VPN 时不受影响）？" y; then
+    systemctl disable proton.VPN.service >/dev/null 2>&1
+    [[ $L4C_CHROOT == 1 ]] || systemctl stop proton.VPN.service 2>/dev/null || true
+    ok "Proton VPN 后台服务：改为按需启动"
+  fi
+
+  # 桌面会话的自启动：在用户目录放一份 Hidden=true 的同名文件即可关掉（随时删掉这份文件就恢复）
+  local user home; user=$(target_user); home=$(user_home "$user")
+  [[ -n $home && -d $home && $user != root ]] || return 0
+  local ad="$home/.config/autostart" off=() n f c e reason own
+  # 名称|原因（只在条件满足时关）
+  local -a cand=(
+    "copyq|和 Xfce 自带的剪贴板历史（Win+V）重复，约 60 MB"
+    "remmina-applet|远程桌面的托盘图标，不影响使用远程桌面，约 20 MB"
+    "msm_notifier|Manjaro 设置提醒（新内核/语言包），约 14 MB"
+    "xiccd|屏幕颜色配置守护进程，Chromebook 屏幕用不到"
+    "xcape|单按 Win 键开菜单，Xfce 快捷键已经做了，重复"
+    "picom|系统自带的 picom 自启动，用户目录里已经有自己的 picom"
+  )
+  for e in "${cand[@]}"; do
+    n=${e%%|*}; reason=${e#*|}
+    f=""; for c in "$ad/$n.desktop" "/etc/xdg/autostart/$n.desktop"; do [[ -f $c ]] && { f=$c; break; }; done
+    [[ -n $f ]] || continue
+    grep -qi '^Hidden=true' "$ad/$n.desktop" 2>/dev/null && continue
+    case $n in
+      copyq) [[ -e /etc/xdg/autostart/xfce4-clipman-plugin-autostart.desktop ]] || continue ;;
+      picom) # 只有用户目录里另有自己的 picom 自启动（如 codex-picom.desktop）时才关系统那份
+        own=0; for c in "$ad"/*picom*.desktop; do [[ -f $c && ${c##*/} != picom.desktop ]] && own=1; done
+        [[ $f == /etc/* ]] && ((own)) || continue ;;
+      xcape) systemctl is-active keyd >/dev/null 2>&1 || continue ;;
+    esac
+    off+=("$n|$reason")
+  done
+  ((${#off[@]})) || return 0
+  echo "可以关掉的开机自启动程序（程序本身不删，随时能手动打开）："
+  for e in "${off[@]}"; do echo "  • ${e%%|*}：${e#*|}"; done
+  confirm "关掉这些开机自启动？" y || return 0
+  mkdir -p "$ad"
+  for e in "${off[@]}"; do
+    n=${e%%|*}
+    { grep -v '^Hidden=' "$ad/$n.desktop" 2>/dev/null || grep -v '^Hidden=' /etc/xdg/autostart/"$n".desktop; echo "Hidden=true"; } >"$ad/$n.desktop.tmp"
+    mv -f "$ad/$n.desktop.tmp" "$ad/$n.desktop"
+  done
+  chown -R "$user:" "$ad"
+  ok "已关掉 ${#off[@]} 个开机自启动（下次登录生效）"
+}
+
 step_services() {
   local s
   # 开机等联网：只有网络硬盘才需要。本机实测它让开机多等 4.4 秒（ZeroTier 等服务会拖着它）
@@ -284,6 +338,7 @@ step_clean() {
 }
 
 if [[ $MODE == clean ]]; then step_clean; exit 0; fi
+if [[ $MODE == ram ]]; then step_ram_apps; exit 0; fi
 
 info "linux-for-chromebook $L4C_VERSION 系统优化"
 step_zram
@@ -296,6 +351,7 @@ step_video
 step_input
 step_wifi
 step_battery
+step_ram_apps
 step_services
 if [[ $L4C_CHROOT != 1 ]] && confirm "最后做一次存储清理？" y; then step_clean; fi
 ok "优化完成。建议重启一次让所有设置生效。"

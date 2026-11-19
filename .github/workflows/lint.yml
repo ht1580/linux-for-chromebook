@@ -6,8 +6,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: bash -n
-        run: for f in bin/l4c lib/*.sh setup/*.sh migrate/*.sh install/*.sh; do bash -n "$f"; done
+        run: for f in bin/l4c lib/*.sh setup/*.sh setup/win11-panel/*.sh migrate/*.sh install/*.sh; do bash -n "$f"; done
       - name: shellcheck
-        run: shellcheck -f gcc bin/l4c lib/*.sh setup/*.sh migrate/*.sh install/*.sh
+        run: shellcheck -f gcc bin/l4c lib/*.sh setup/*.sh setup/win11-panel/*.sh migrate/*.sh install/*.sh
       - name: keyd config generation
         run: bash setup/chromebook.sh gen-keyd

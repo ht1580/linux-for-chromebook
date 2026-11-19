@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # linux-for-chromebook 公共函数库。被各脚本 source，不要直接执行。
 
-L4C_VERSION="0.1.0"
+L4C_VERSION="0.2.0"
 L4C_ROOT="${L4C_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 L4C_YES="${L4C_YES:-0}"        # 1 = 所有提问都采用默认答案
 L4C_CHROOT="${L4C_CHROOT:-0}"  # 1 = 运行在安装器的 chroot 里（不启动服务、不动正在运行的系统）
@@ -20,7 +20,7 @@ die()  { printf '%s  ✗ %s%s\n' "$C_R" "$*" "$C_0" >&2; exit 1; }
 # 任何未处理的错误都打印出错位置，方便反馈问题
 trap '((BASH_SUBSHELL)) || printf "%s  ✗ 出错：%s 第 %s 行：%s%s\n" "$C_R" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND" "$C_0" >&2' ERR
 
-# confirm "问题" [y|n]  —— 返回 0 表示“是”
+# confirm "问题" [y|n]  —— 返回 0 表示「是」
 confirm() {
   local q=$1 def=${2:-y} ans hint
   [[ $def == y ]] && hint="[Y/n]" || hint="[y/N]"
@@ -91,7 +91,7 @@ pkg_install() {
 read_list() { sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^$/d' "$1"; }
 
 # set_block 文件 名称 内容 [插入锚点正则]
-# 在文件中维护一段 “# >>> l4c:名称 … # <<< l4c:名称” 的内容，可重复执行。
+# 在文件中维护一段 「# >>> l4c:名称 … # <<< l4c:名称」 的内容，可重复执行。
 set_block() {
   local f=$1 name=$2 content=$3 anchor=${4:-} tmp
   tmp=$(mktemp)

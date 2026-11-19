@@ -50,10 +50,12 @@ install_system_look() {
   fi
 
   if [[ -n ${WIN_WALL:-} ]]; then
-    local f
-    f=$(ls "$WIN_WALL"/img0*.jpg "$WIN_WALL"/Wallpaper/Windows/img0*.jpg "$WIN_WALL"/4K/Wallpaper/Windows/img0_1920x1200.jpg 2>/dev/null | tail -1 || true)
+    local f c
+    f=""; for c in "$WIN_WALL"/img0*.jpg "$WIN_WALL"/Wallpaper/Windows/img0*.jpg "$WIN_WALL"/4K/Wallpaper/Windows/img0_1920x1200.jpg; do
+      [[ -f $c ]] && f=$c   # 取最后一个存在的（4K 目录里的 1920×1200 最合适）
+    done
     [[ -n $f ]] && install -m 644 "$f" "$bg/win11-desktop.jpg" && ok "壁纸：Windows 11 原版（$(basename "$f")）"
-    f=$(ls "$WIN_WALL"/img100.jpg "$WIN_WALL"/Screen/img100.jpg 2>/dev/null | head -1 || true)
+    f=""; for c in "$WIN_WALL"/img100.jpg "$WIN_WALL"/Screen/img100.jpg; do [[ -f $c ]] && { f=$c; break; }; done
     [[ -n $f ]] && install -m 644 "$f" "$bg/win11-lock.jpg" && ok "锁屏图：Windows 11 原版"
   fi
   if [[ -d /etc/lightdm ]]; then
@@ -244,8 +246,8 @@ apply_compositor() {
       sed -i -E "s/^(\s*)\"(window_type = 'dock'|class_g = 'Xfce4-panel')\"(,?)$/\1\"\2 \&\& width >= 600\"\3/" "$pc"
     fi
     if pgrep -x picom >/dev/null; then
-      local cmd; cmd=$(tr ' ' ' ' </proc/"$(pgrep -x picom | head -1)"/cmdline)
-      pkill -x picom; sleep 0.5; (setsid $cmd >/dev/null 2>&1 &)
+      local -a cmd; mapfile -d '' -t cmd </proc/"$(pgrep -x picom | head -1)"/cmdline
+      pkill -x picom; sleep 0.5; (setsid "${cmd[@]}" >/dev/null 2>&1 &)
     fi
     ok "窗口合成：只用 picom（圆角 + 阴影），已关闭 xfwm4 自带合成"
   else
@@ -312,7 +314,7 @@ apply_notify() {
   xset_ xfce4-notifyd /expire-timeout int 5
 }
 
-# 开始菜单：搜索在顶部，先显示“已固定”，底部是电源/锁屏
+# 开始菜单：搜索在顶部，先显示「已固定」，底部是电源/锁屏
 apply_menu() {
   local id
   for id in $(xfconf-query -c xfce4-panel -lv 2>/dev/null | awk '$2=="whiskermenu" {sub(".*/plugin-","",$1); print $1}'); do
@@ -464,7 +466,7 @@ indicatorColor=rgb(0,95,184)
 inactiveColor=rgb(128,128,128)
 EOF
   fi
-  # 开始按钮旁边的“搜索”按钮（打开开始菜单，光标直接在搜索框里）
+  # 开始按钮旁边的「搜索」按钮（打开开始菜单，光标直接在搜索框里）
   mkdir -p "$PANEL_DIR/launcher-11"
   cat >"$PANEL_DIR/launcher-11/l4c-search.desktop" <<'EOF'
 [Desktop Entry]
@@ -475,9 +477,9 @@ Icon=system-search
 Exec=xfce4-popup-whiskermenu
 EOF
 
-  # Win11 任务栏右侧的小部件（输入法“中/英”、Wi-Fi、^ 弹出框）装在用户目录
+  # Win11 任务栏右侧的小部件（输入法「中/英」、Wi-Fi、^ 弹出框）装在用户目录
   local H="$HOME/.local/share/l4c/panel" sw=1366 sh=768
-  mkdir -p "$H"; install -m 755 "$L4C_ROOT"/setup/win11-panel/*.sh "$H/"
+  mkdir -p "$H"; rm -f "$H/ime.sh"; install -m 755 "$L4C_ROOT"/setup/win11-panel/*.sh "$H/"
   if have xrandr; then read -r sw sh < <(xrandr 2>/dev/null | sed -n 's/.*current \([0-9]*\) x \([0-9]*\).*/\1 \2/p'); fi
   # Win11 的 ^ 是细线折角（图标主题里的 pan-up 是实心三角）
   printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3.5 10.5L8 6l4.5 4.5" fill="none" stroke="#1b1b1b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>' >"$H/chevron-up.svg"
@@ -499,13 +501,13 @@ Exec=sh -c "sleep 5; $H/flyout.sh --hide"
 OnlyShowIn=XFCE;
 NoDisplay=true
 EOF
-  local genmon=1; plugin_exists genmon || { genmon=0; warn "没装 xfce4-genmon-plugin，任务栏上不显示“中/英”和 Wi-Fi 指示（sudo pacman -S xfce4-genmon-plugin）"; }
-  local right_ids='<value type="int" value="12"/><value type="int" value="13"/><value type="int" value="14"/>'
+  local genmon=1; plugin_exists genmon || { genmon=0; warn "没装 xfce4-genmon-plugin，任务栏上不显示「中/英」和 Wi-Fi 指示（sudo pacman -S xfce4-genmon-plugin）"; }
+  local right_ids='<value type="int" value="12"/><value type="int" value="13"/>'
   ((genmon)) || right_ids='<value type="int" value="12"/>'
 
   cat >"$XFCONF_DIR/xfce4-panel.xml" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- 由 linux-for-chromebook 生成：Windows 11 风格任务栏（靠左）+ “隐藏的图标”弹出框 -->
+<!-- 由 linux-for-chromebook 生成：Windows 11 风格任务栏（靠左）+ 「隐藏的图标」弹出框 -->
 <channel name="xfce4-panel" version="1.0">
   <property name="configver" type="int" value="2"/>
   <property name="panels" type="array">
@@ -532,7 +534,7 @@ EOF
         <value type="int" value="8"/><value type="int" value="10"/>
       </property>
     </property>
-    <!-- “隐藏的图标”弹出框：浮动小面板，里面只有托盘，排成网格；平时收起，点 ^ 弹出 -->
+    <!-- 「隐藏的图标」弹出框：浮动小面板，里面只有托盘，排成网格；平时收起，点 ^ 弹出 -->
     <property name="panel-2" type="empty">
       <property name="position" type="string" value="p=0;x=$((sw - 150));y=$((sh - 130))"/>
       <property name="position-locked" type="bool" value="true"/>
@@ -577,20 +579,13 @@ EOF
       <property name="items" type="array"><value type="string" value="l4c-flyout.desktop"/></property>
       <property name="show-label" type="bool" value="false"/>
     </property>
-    <!-- genmon 4.3 的设置存在 xfconf 里；update-period 单位是毫秒 -->
+    <!-- 「中/英」+ Wi-Fi 合在一个 genmon 里（每个插件一个进程）；genmon 4.3 的设置在 xfconf 里，update-period 单位毫秒 -->
     <property name="plugin-13" type="string" value="genmon">
-      <property name="command" type="string" value="$H/ime.sh"/>
+      <property name="command" type="string" value="$H/tray.sh"/>
       <property name="use-label" type="bool" value="false"/>
       <property name="text" type="string" value=""/>
-      <property name="update-period" type="int" value="1000"/>
+      <property name="update-period" type="int" value="1500"/>
       <property name="font" type="string" value="Noto Sans CJK SC 11"/>
-    </property>
-    <property name="plugin-14" type="string" value="genmon">
-      <property name="command" type="string" value="$H/wifi.sh"/>
-      <property name="use-label" type="bool" value="false"/>
-      <property name="text" type="string" value=""/>
-      <property name="update-period" type="int" value="5000"/>
-      <property name="font" type="string" value="Noto Sans CJK SC 10"/>
     </property>
     <property name="plugin-5" type="string" value="systray">
       <property name="square-icons" type="bool" value="true"/>

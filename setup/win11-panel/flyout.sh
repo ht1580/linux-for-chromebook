@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# l4c 任务栏：显示/隐藏 Win11 式“隐藏的图标”弹出框（第二个小面板，里面是托盘网格）。
+# shellcheck disable=SC2154
+# （X、Y、F_X 等变量由 eval "$(xdotool ... --shell)" 设置，shellcheck 看不到）
+# l4c 任务栏：显示/隐藏 Win11 式「隐藏的图标」弹出框（第二个小面板，里面是托盘网格）。
 # 打开后鼠标离开弹出框约 1 秒自动收起（只在打开期间每 0.3 秒看一次鼠标位置）。
 #   flyout.sh         切换    flyout.sh --hide   收起（登录时用）
 W_CACHE=${XDG_RUNTIME_DIR:-/tmp}/l4c-flyout-win

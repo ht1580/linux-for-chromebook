@@ -69,12 +69,19 @@ sudo l4c scan            # 生成 ~/l4c-scan-*.md
 - [ ] 声卡：设备都已出现（见上），**还要实际试听**扬声器、耳机，试录内置麦克风（`dmic_num=4`）
 - [ ] keyd：Alt+亮度键 = 键盘背光（`kbdillumdown/up`）在 xfce4-power-manager 下是否生效；Alt+F4、搜索键组合
 - [ ] `wipe.sh disk`：eMMC 是否支持 `blkdiscard -s`；擦除后抽查结果
-- [ ] Xfce 面板 XML（`setup/desktop-win11.sh`）：`p=8` 是否是底部、`length` 类型、docklike rc 键名、whiskermenu 属性名、clock `digital-layout` 枚举
+- [x] Xfce 面板 XML（`setup/desktop-win11.sh`）：已在真机上逐项截图核对（2026-11-19）。踩过的坑：
+  插件跑在独立小窗口里，CSS 只给主窗口上色会透出壁纸；托盘每屏只能有一个（`X-XFCE-Unique=SCREEN`），所以 ^ 弹出框是第二个面板；
+  genmon 4.3 的设置在 xfconf（`/command`、`/update-period` 毫秒）而不是 `.rc`；给 picom 发 SIGUSR1 会让它退出，要重启；
+  从 SSH 远程重启桌面组件要带上 `LANG`，否则界面变英文
 - [ ] zram（`min(ram*2, 8192)`）+ earlyoom + MGLRU `min_ttl_ms=1000` 组合下，开 QQ + Chrome 时是否还会卡死
 - [x] Wi-Fi 关闭省电后 missed beacons 告警是否消失（`journalctl -k | grep missed`）
 - [ ] Windows 工具 `windows/l4c-win.ps1`：**从未在真实 Windows 上运行过**；HttpListener + 防火墙、分块上传、中文路径、`netsh wlan export`、`tar.exe` zstd、BITS
 - [ ] ChromeOS：`recovery2.json` 字段名和 SHA1 校验对象；ChromeOS Flex 下载地址
 - [ ] 新系统里 `vainfo` 显示 iHD，Chrome 的 `chrome://gpu` 里 Video Decode 为硬件加速
+
+## 路线图
+
+下一次更新：Win11 风格的任务管理器（方案对比见 [docs/roadmap.md](docs/roadmap.md)）。版本变化记在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 本机已有的备份（在 Windows 的 `D:\Chromebook迁移`）
 

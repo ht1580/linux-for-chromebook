@@ -19,7 +19,7 @@ declare -A VIVALDI=(
   [9A]=playpause [9B]=micmute [9E]=kbdillumtoggle [A0]=mute
   [AE]=volumedown [B0]=volumeup [E9]=forward [EA]=back [E7]=refresh
 )
-# 顶排“动作键”在 Windows 习惯下应该输出什么
+# 顶排「动作键」在 Windows 习惯下应该输出什么
 declare -A WIN_ACTION=(
   [back]=A-left [forward]=A-right [refresh]=f5 [zoom]=f11 [scale]=M-tab [print]=print
 )
@@ -119,7 +119,7 @@ do_keyboard() {
 
 # 声卡：Chromebook 的 I2S 声卡（本机 sof-rt5682：RT5682S 耳机 + MAX98360A 功放）
 # 内核和固件都能识别，但 Manjaro 自带的 alsa-ucm-conf 没有这类声卡的配置，PipeWire 只能看到
-# “虚拟输出 auto_null”，也就是完全没声音。社区脚本会补上 ChromeOS 同款 UCM、拓扑和麦克风参数。
+# 「虚拟输出 auto_null」，也就是完全没声音。社区脚本会补上 ChromeOS 同款 UCM、拓扑和麦克风参数。
 do_audio() {
   as_root true || die "需要管理员权限"
   info "安装 Chromebook 声卡驱动（社区项目 chromebook-linux-audio，版本 ${AUDIO_REF:0:7}）"
@@ -164,7 +164,7 @@ do_info() {
     echo "固件状态: MrChromebox UEFI ✓  （更新固件：https://mrchromebox.tech 的 firmware-util.sh，请务必先阅读说明）"
   elif grep -qi '^Google_' $dmi/bios_version 2>/dev/null; then
     echo "固件状态: 原厂 Google 固件，开发者模式 + RW_LEGACY（UEFI）启动 Linux"
-    echo "          开机出现“操作系统验证已关闭”时按 Ctrl+L；千万不要按空格（会恢复 ChromeOS 并清空硬盘）"
+    echo "          开机出现「操作系统验证已关闭」时按 Ctrl+L；千万不要按空格（会恢复 ChromeOS 并清空硬盘）"
   else
     echo "固件状态: 未知固件，部分功能可能不同"
   fi

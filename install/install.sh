@@ -30,7 +30,7 @@ mountpoint -q "$MNT" && die "$MNT 已被挂载，请先卸载：umount -R $MNT"
 LOG=/tmp/l4c-install.log
 exec > >(tee -a "$LOG") 2>&1
 cleanup() { umount -R "$MNT" 2>/dev/null || true; }
-# 只在主进程里报“中断”（子进程里的命令失败不代表安装失败）
+# 只在主进程里报「中断」（子进程里的命令失败不代表安装失败）
 trap '((BASH_SUBSHELL)) || { warn "安装中断，完整输出见 $LOG。可以修正问题后重新运行。"; cleanup; }' ERR
 
 echo "
@@ -111,7 +111,7 @@ TIMEZONE_=$(ask "时区" "${M[TIMEZONE]:-Asia/Shanghai}")
 [[ -e /usr/share/zoneinfo/$TIMEZONE_ ]] || die "无效时区 $TIMEZONE_"
 LOCALE_=$(ask "系统语言" "${M[LOCALE]:-zh_CN.UTF-8}")
 WIN11=y; [[ -n $BACKUP ]] && WIN11=n
-confirm "启用 Windows 11 风格桌面（居中任务栏、Win 快捷键）？$([[ -n $BACKUP ]] && echo '选“否”则保留迁移包里你原来的桌面布局')" "$WIN11" && WIN11=y || WIN11=n
+confirm "启用 Windows 11 风格桌面（居中任务栏、Win 快捷键）？$([[ -n $BACKUP ]] && echo '选「否」则保留迁移包里你原来的桌面布局')" "$WIN11" && WIN11=y || WIN11=n
 AUDIO=y; confirm "安装 Chromebook 声卡驱动（社区脚本）？" y || AUDIO=n
 
 echo
@@ -135,7 +135,7 @@ if grep -qi mrchromebox /sys/class/dmi/id/bios_version 2>/dev/null; then
 fi
 if ((STOCK_FW)); then
   warn "这台 Chromebook 是原厂固件（开发者模式启动 Linux）。装好后每次开机："
-  warn "  出现“操作系统验证已关闭”时按 Ctrl+L 启动新系统；千万不要按空格，否则会恢复 ChromeOS 并清空硬盘。"
+  warn "  出现「操作系统验证已关闭」时按 Ctrl+L 启动新系统；千万不要按空格，否则会恢复 ChromeOS 并清空硬盘。"
   warn "  想装回 ChromeOS 也很简单：用官方恢复 U 盘即可（l4c chromeos check）。"
 fi
 [[ $(ask "确认清空 $DISK 并安装？请输入大写 YES" "") == YES ]] || die "已取消，硬盘未做任何改动"
@@ -233,5 +233,5 @@ sync
 cleanup
 ok "安装完成！"
 echo "拔掉 U 盘后重启。首次登录会自动应用设置，之后可以用 l4c 命令管理（l4c help）。"
-((STOCK_FW)) && echo "开机出现“操作系统验证已关闭”时按 Ctrl+L（不要按空格）。"
+((STOCK_FW)) && echo "开机出现「操作系统验证已关闭」时按 Ctrl+L（不要按空格）。"
 if confirm "现在重启？" y; then reboot; fi

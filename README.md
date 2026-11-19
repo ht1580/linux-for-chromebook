@@ -5,6 +5,8 @@
 
 基于 Manjaro（Arch）+ 精简 Xfce。所有功能都是 shell 脚本，可以随时查看和修改。
 
+**2026-11 已在这台 Chromebook 上实机全新安装并逐项核对**，见 [更新日志](CHANGELOG.md)；接下来要做的见 [路线图](docs/roadmap.md)。
+
 > 本项目改动的是系统设置，并且会格式化硬盘（仅全新安装时）。使用前请先导出迁移包，并阅读下面的说明。
 
 ---
@@ -36,7 +38,11 @@ l4c keyboard      # Chromebook 键盘改成 Windows 习惯
 ```
 
 ```bash
-l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现在的桌面设置）
+l4c desktop       # Windows 11 使用习惯：任务栏和快捷键（会先备份你现在的桌面设置）
+```
+
+```bash
+l4c look          # Windows 11 外观：登录/锁屏、壁纸、任务栏、^ 弹出框、开始菜单、光标
 ```
 
 不满意可以恢复桌面：`l4c undo-desktop ~/.local/share/l4c/xfce-backup-时间`。
@@ -56,7 +62,9 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 ### C. 只用 U 盘全新安装
 
 1. 导出迁移包到 U 盘（建议 exFAT 格式）：`l4c export -o /run/media/$USER/你的U盘`
-2. 用 [Manjaro Xfce 启动 U 盘](https://manjaro.org/products/download/x86) 启动 Chromebook（开机按 Esc 选 U 盘），连上 Wi-Fi
+2. 用 [Manjaro Xfce 启动 U 盘](https://manjaro.org/products/download/x86) 启动 Chromebook，连上 Wi-Fi
+   （开发者模式界面按 Ctrl+L，看到 UEFI 画面时按 Esc 选 U 盘；**原厂固件来不及按 Esc 时**，在旧系统里运行
+   `sudo bash setup/kexec-live.sh` 直接热启动到 U 盘）
 3. 打开终端：
 
    ```bash
@@ -91,6 +99,7 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 | 透明大页改为 madvise、MGLRU 保护最近 1 秒用过的内存（ChromeOS 同款） | 后台程序少占内存，内存紧张时不会反复卡顿 |
 | Firefox：内存缓存、低内存时自动休眠标签页、限制进程数 | 浏览器少占内存、少写硬盘 |
 | Intel 硬件视频解码（VA-API，iHD 驱动；去掉 N100 用不了的 i965 旧驱动；Chrome/Edge 自动加开关） | 看视频 CPU 占用明显下降，更省电 |
+| **开机常驻程序瘦身**（`l4c optimize --ram`）：Proton VPN 后台改为按需启动，关掉重复的剪贴板管理器、用不到的托盘小程序 | 实测约省 270 MB |
 
 ### 存储（32G eMMC）
 
@@ -129,7 +138,11 @@ l4c desktop       # Windows 11 风格任务栏和快捷键（会先备份你现�
 
 ### 像 Windows 11 一样用
 
-- **居中任务栏**：开始按钮 + 固定应用居中，托盘、音量、电量、时钟在右侧（[xfce4-docklike-plugin](https://gitlab.xfce.org/panel-plugins/xfce4-docklike-plugin)）
+- **任务栏**（和 Win11 一样靠左）：开始、搜索、固定的应用（[xfce4-docklike-plugin](https://gitlab.xfce.org/panel-plugins/xfce4-docklike-plugin)，蓝色运行指示条）；
+  右侧依次是 **^**、中/英（单击切换输入法）、Wi-Fi、音量、电池百分比、时间日期、通知、显示桌面
+- **^ 弹出框**：其他托盘图标排成网格，圆角、阴影，出现在 ^ 正上方，鼠标移开自动收起（不常驻，只在打开时运行）
+- **Win11 外观**：登录 / 锁屏界面、壁纸（可以直接用你自己 Windows 里的原版壁纸）、浅色半透明任务栏、黄色文件夹、白色光标、
+  空闲黑屏的屏保、右下角通知、搜索在顶部的开始菜单 —— 全部是配置和样式，不增加常驻程序
 - **贴靠分屏**：把窗口拖到屏幕边缘，或按 Win+←/→ 左右分屏，Win+Alt+方向键分成四分之一屏
 - **Windows 快捷键**：Win+E、Win+D、Win+L、Win+V、Win+Shift+S、Ctrl+Shift+Esc、Alt+F4、Win+Ctrl+←/→ 虚拟桌面…… 见 **[完整快捷键表](docs/shortcuts.md)**
 - 关闭/最大化/最小化按钮在右上角，双击标题栏最大化
@@ -172,10 +185,12 @@ l4c export -o <U盘目录>   导出迁移包到 U 盘
 l4c export --send <地址>  通过局域网发送到 Windows 工具
 l4c import <目录或地址>   导入迁移包（U 盘目录或 Windows 工具的地址）
 l4c optimize [--all]      系统优化
+l4c optimize --ram        只精简开机常驻程序（省内存）
 l4c clean                 清理存储空间
 l4c keyboard              键盘映射
 l4c audio                 声卡驱动
-l4c desktop [--theme]     Windows 11 风格桌面
+l4c desktop [--theme]     Windows 11 使用习惯（任务栏、快捷键）
+l4c look                  Windows 11 外观（登录/锁屏、壁纸、任务栏、^ 弹出框）
 l4c theme                 安装 Fluent 主题
 l4c undo-desktop <目录>   恢复修改前的桌面
 l4c install               全新安装（在启动 U 盘里）
@@ -194,7 +209,9 @@ bin/l4c                    命令入口
 lib/common.sh              公共函数
 setup/optimize.sh          内存、存储、eMMC、视频解码优化
 setup/chromebook.sh        键盘映射、声卡、硬件信息
-setup/desktop-win11.sh     Windows 11 风格桌面和快捷键
+setup/desktop-win11.sh     Windows 11 风格桌面、外观和快捷键
+setup/win11-panel/         任务栏右侧的小部件：中/英 + Wi-Fi 指示、^ 弹出框
+setup/kexec-live.sh        原厂固件下从旧系统热启动到 U 盘 Live 系统
 setup/scan.sh              设备扫描报告
 setup/remote.sh            临时 SSH 远程连接
 setup/wipe.sh              清除残存信息、整盘安全擦除
@@ -207,7 +224,8 @@ install/install.sh         全新安装器（在 Manjaro 启动 U 盘里运行�
 install/chroot-setup.sh    安装器在新系统里执行的配置步骤
 install/packages/*.txt     全新安装的软件包列表（可自行增删）
 config/                    各种配置文件
-docs/                      快捷键表、迁移说明、Windows 流程、ChromeOS
+docs/                      快捷键表、迁移说明、Windows 流程、ChromeOS、路线图
+CHANGELOG.md               更新日志
 CLAUDE.md                  给后续 Claude Code 会话的说明（设备信息、待实机验证清单）
 ```
 
@@ -217,7 +235,10 @@ CLAUDE.md                  给后续 Claude Code 会话的说明（设备信息�
 - 迁移包的导出 → 导入流程已在 Linux 环境中实际测试：U 盘方式、局域网边传边导入方式（用模拟的 Windows 传输服务）、FAT32 分卷、中文文件名、从 Windows 加入的文件和 Wi-Fi、用户名不同时的路径修正、完整性校验
 - Windows 工具（PowerShell）做了结构检查和人工审阅，**尚未在真实 Windows 11 上运行过**
 - 键盘映射生成、配置文件修改（pacman.conf、fstab、GRUB 参数）已测试，并且重复运行结果不变
-- **尚未在 Yavilla 实机上完整测试全新安装流程**，如遇问题请把终端里的报错（会显示出错的脚本和行号）提交到 Issues
+- **2026-11-19 在 Yavilla 实机上完整走过一遍**：整盘镜像备份 → kexec 进 Live → 擦盘 → 全新安装（数据通过 SSH 隧道从 Windows 边下载边导入）→
+  声卡、视频解码、内存参数、Win11 外观逐项截图核对；安装中发现的问题都已修复（见更新日志）
+- 还没实际试听扬声器 / 耳机、没试键盘背光键，Windows 工具也还没在真实 Windows 上跑过（见[路线图](docs/roadmap.md)）
+- 遇到问题请把终端里的报错（会显示出错的脚本和行号）和 `/tmp/l4c-install.log` 提交到 Issues
 
 ## 致谢
 
