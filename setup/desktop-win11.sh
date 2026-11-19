@@ -238,6 +238,15 @@ apply_compositor() {
       cp -n "$pc" "$pc.l4c-bak"
       sed -i -E 's/^(\s*inactive-opacity\s*=\s*)0\.[0-9]+/\11.0/' "$pc"
     fi
+    # 托盘弹出框也是面板窗口：排除规则只针对通栏任务栏（宽度 ≥ 600），弹出框才有 Win11 的圆角和阴影
+    if [[ -f $pc ]] && grep -qE "^\s*\"(window_type = 'dock'|class_g = 'Xfce4-panel')\",?$" "$pc"; then
+      cp -n "$pc" "$pc.l4c-bak"
+      sed -i -E "s/^(\s*)\"(window_type = 'dock'|class_g = 'Xfce4-panel')\"(,?)$/\1\"\2 \&\& width >= 600\"\3/" "$pc"
+    fi
+    if pgrep -x picom >/dev/null; then
+      local cmd; cmd=$(tr ' ' ' ' </proc/"$(pgrep -x picom | head -1)"/cmdline)
+      pkill -x picom; sleep 0.5; (setsid $cmd >/dev/null 2>&1 &)
+    fi
     ok "窗口合成：只用 picom（圆角 + 阴影），已关闭 xfwm4 自带合成"
   else
     xset_ xfwm4 /general/use_compositing bool true
@@ -347,9 +356,9 @@ install_yellow_icons() {
 
 # 托盘：电池只显示图标（Wi-Fi 等托盘图标用 Fluent-*-light 图标主题里给浅色任务栏的深色版）
 apply_tray() {
-  xset_ xfce4-power-manager /xfce4-power-manager/show-panel-label int 0
+  xset_ xfce4-power-manager /xfce4-power-manager/show-panel-label int 1   # 图标 + 百分比
   if pgrep -x nm-applet >/dev/null; then pkill -x nm-applet; (setsid env LANG="$SESSION_LANG" nm-applet >/dev/null 2>&1 &); fi
-  ok "托盘：深色图标（适合浅色任务栏），电池只显示图标"
+  ok "托盘：深色图标（适合浅色任务栏），电池显示百分比"
 }
 
 # 桌面图标从左上角开始排（清掉旧的图标位置记录）
@@ -466,13 +475,42 @@ Icon=system-search
 Exec=xfce4-popup-whiskermenu
 EOF
 
+  # Win11 任务栏右侧的小部件（输入法“中/英”、Wi-Fi、^ 弹出框）装在用户目录
+  local H="$HOME/.local/share/l4c/panel" sw=1366 sh=768
+  mkdir -p "$H"; install -m 755 "$L4C_ROOT"/setup/win11-panel/*.sh "$H/"
+  if have xrandr; then read -r sw sh < <(xrandr 2>/dev/null | sed -n 's/.*current \([0-9]*\) x \([0-9]*\).*/\1 \2/p'); fi
+  # Win11 的 ^ 是细线折角（图标主题里的 pan-up 是实心三角）
+  printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3.5 10.5L8 6l4.5 4.5" fill="none" stroke="#1b1b1b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>' >"$H/chevron-up.svg"
+  mkdir -p "$PANEL_DIR/launcher-12"
+  cat >"$PANEL_DIR/launcher-12/l4c-flyout.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=显示隐藏的图标
+Icon=$H/chevron-up.svg
+Exec=$H/flyout.sh
+EOF
+  # 登录后先把弹出框收起来
+  mkdir -p "$HOME/.config/autostart"
+  cat >"$HOME/.config/autostart/l4c-tray-flyout.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=l4c 托盘弹出框
+Exec=sh -c "sleep 5; $H/flyout.sh --hide"
+OnlyShowIn=XFCE;
+NoDisplay=true
+EOF
+  local genmon=1; plugin_exists genmon || { genmon=0; warn "没装 xfce4-genmon-plugin，任务栏上不显示“中/英”和 Wi-Fi 指示（sudo pacman -S xfce4-genmon-plugin）"; }
+  local right_ids='<value type="int" value="12"/><value type="int" value="13"/><value type="int" value="14"/>'
+  ((genmon)) || right_ids='<value type="int" value="12"/>'
+
   cat >"$XFCONF_DIR/xfce4-panel.xml" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- 由 linux-for-chromebook 生成：Windows 11 风格居中任务栏 -->
+<!-- 由 linux-for-chromebook 生成：Windows 11 风格任务栏（靠左）+ “隐藏的图标”弹出框 -->
 <channel name="xfce4-panel" version="1.0">
   <property name="configver" type="int" value="2"/>
   <property name="panels" type="array">
     <value type="int" value="1"/>
+    <value type="int" value="2"/>
     <property name="dark-mode" type="bool" value="false"/>
     <property name="panel-1" type="empty">
       <property name="position" type="string" value="p=8;x=0;y=0"/>
@@ -481,25 +519,39 @@ EOF
       <property name="size" type="uint" value="48"/>
       <property name="icon-size" type="uint" value="24"/>
       <property name="enable-struts" type="bool" value="true"/>
-      <!-- Win11 浅色半透明任务栏：底色由面板自己画（CSS 会叠画到插件小窗口上） -->
       <property name="background-style" type="uint" value="1"/>
       <property name="background-rgba" type="array">
         <value type="double" value="0.933"/><value type="double" value="0.945"/>
         <value type="double" value="0.965"/><value type="double" value="0.88"/>
       </property>
+      <!-- 开始、搜索、应用靠左；右边：^、中/英、Wi-Fi、音量、电池、时间、通知、显示桌面 -->
       <property name="plugin-ids" type="array">
-        <value type="int" value="1"/><value type="int" value="2"/><value type="int" value="11"/>
-        <value type="int" value="3"/><value type="int" value="4"/><value type="int" value="5"/>
+        <value type="int" value="2"/><value type="int" value="11"/><value type="int" value="3"/>
+        <value type="int" value="4"/>$right_ids
         <value type="int" value="6"/><value type="int" value="7"/><value type="int" value="9"/>
         <value type="int" value="8"/><value type="int" value="10"/>
       </property>
     </property>
+    <!-- “隐藏的图标”弹出框：浮动小面板，里面只有托盘，排成网格；平时收起，点 ^ 弹出 -->
+    <property name="panel-2" type="empty">
+      <property name="position" type="string" value="p=0;x=$((sw - 150));y=$((sh - 130))"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="mode" type="uint" value="0"/>
+      <property name="size" type="uint" value="44"/>
+      <property name="nrows" type="uint" value="2"/>
+      <property name="length" type="uint" value="1"/>
+      <property name="length-adjust" type="bool" value="true"/>
+      <property name="enable-struts" type="bool" value="false"/>
+      <property name="icon-size" type="uint" value="24"/>
+      <property name="background-style" type="uint" value="1"/>
+      <property name="background-rgba" type="array">
+        <value type="double" value="0.976"/><value type="double" value="0.976"/>
+        <value type="double" value="0.98"/><value type="double" value="0.98"/>
+      </property>
+      <property name="plugin-ids" type="array"><value type="int" value="5"/></property>
+    </property>
   </property>
   <property name="plugins" type="empty">
-    <property name="plugin-1" type="string" value="separator">
-      <property name="expand" type="bool" value="true"/>
-      <property name="style" type="uint" value="0"/>
-    </property>
     <property name="plugin-2" type="string" value="$menu">
       <property name="show-button-title" type="bool" value="false"/>
       <property name="button-icon" type="string" value="start-here"/>
@@ -521,31 +573,40 @@ EOF
       <property name="expand" type="bool" value="true"/>
       <property name="style" type="uint" value="0"/>
     </property>
+    <property name="plugin-12" type="string" value="launcher">
+      <property name="items" type="array"><value type="string" value="l4c-flyout.desktop"/></property>
+      <property name="show-label" type="bool" value="false"/>
+    </property>
+    <!-- genmon 4.3 的设置存在 xfconf 里；update-period 单位是毫秒 -->
+    <property name="plugin-13" type="string" value="genmon">
+      <property name="command" type="string" value="$H/ime.sh"/>
+      <property name="use-label" type="bool" value="false"/>
+      <property name="text" type="string" value=""/>
+      <property name="update-period" type="int" value="1000"/>
+      <property name="font" type="string" value="Noto Sans CJK SC 11"/>
+    </property>
+    <property name="plugin-14" type="string" value="genmon">
+      <property name="command" type="string" value="$H/wifi.sh"/>
+      <property name="use-label" type="bool" value="false"/>
+      <property name="text" type="string" value=""/>
+      <property name="update-period" type="int" value="5000"/>
+      <property name="font" type="string" value="Noto Sans CJK SC 10"/>
+    </property>
     <property name="plugin-5" type="string" value="systray">
       <property name="square-icons" type="bool" value="true"/>
-      <property name="icon-size" type="int" value="16"/>
-      <property name="hidden-items" type="array">
-        <value type="string" value="blueman"/><value type="string" value="CopyQ_copyq"/>
-        <value type="string" value="remmina-icon"/><value type="string" value="zerotier-gui"/>
-        <value type="string" value="pamac-tray"/><value type="string" value="proton-vpn-app"/>
-      </property>
-      <property name="hidden-legacy-items" type="array">
-        <value type="string" value="pamac-tray"/><value type="string" value="clipman 剪贴板管理器"/>
-        <value type="string" value="fcitx5 tray window"/><value type="string" value="blueman"/>
-      </property>
+      <property name="single-row" type="bool" value="false"/>
+      <property name="icon-size" type="int" value="24"/>
     </property>
     <property name="plugin-6" type="string" value="pulseaudio">
       <property name="enable-keyboard-shortcuts" type="bool" value="true"/>
     </property>
-    <property name="plugin-7" type="string" value="power-manager-plugin">
-      <property name="show-panel-label" type="int" value="0"/>
-    </property>
+    <property name="plugin-7" type="string" value="power-manager-plugin"/>
     <property name="plugin-8" type="string" value="notification-plugin"/>
     <property name="plugin-9" type="string" value="clock">
       <property name="mode" type="uint" value="2"/>
       <property name="digital-layout" type="uint" value="1"/>
-      <property name="digital-time-format" type="string" value="%H:%M"/>
-      <property name="digital-date-format" type="string" value="%Y/%m/%d"/>
+      <property name="digital-time-format" type="string" value="%-H:%M:%S"/>
+      <property name="digital-date-format" type="string" value="%Y/%-m/%-d"/>
       <property name="tooltip-format" type="string" value="%Y年%m月%d日 %A"/>
     </property>
     <property name="plugin-10" type="string" value="showdesktop"/>
@@ -553,7 +614,7 @@ EOF
 </channel>
 EOF
   (setsid env LANG="$SESSION_LANG" xfce4-panel >/dev/null 2>&1 &)
-  ok "已设置 Windows 11 风格任务栏：居中开始菜单 + 固定应用（Win+1…9 打开第几个），右侧托盘和时钟"
+  ok "已设置 Windows 11 风格任务栏：开始、搜索、应用靠左；右边 ^ 弹出框、中/英、Wi-Fi、音量、电池、时间"
 }
 
 # ---------------------------------------------------------------- 主流程 ----
