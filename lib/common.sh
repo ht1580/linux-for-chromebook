@@ -96,7 +96,9 @@ set_block() {
   local f=$1 name=$2 content=$3 anchor=${4:-} tmp
   tmp=$(mktemp)
   [[ -f $f ]] || : >"$f"
-  awk -v b="# >>> l4c:$name" -v e="# <<< l4c:$name" -v a="$anchor" -v c="$content" '
+  # 锚点和内容经环境变量传给 awk：awk -v 会把 \[ 之类的反斜杠转义吃掉，正则就变了
+  L4C_SB_A=$anchor L4C_SB_C=$content awk -v b="# >>> l4c:$name" -v e="# <<< l4c:$name" '
+    BEGIN { a = ENVIRON["L4C_SB_A"]; c = ENVIRON["L4C_SB_C"] }
     $0==b {skip=1; next}
     $0==e {skip=0; next}
     skip {next}

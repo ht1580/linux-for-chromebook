@@ -26,8 +26,12 @@ STOCK_FW=0; grep -qi '^Google_' /sys/class/dmi/id/bios_version 2>/dev/null && ST
 grep -qi manjaro /etc/os-release || die "请在 Manjaro 的启动 U 盘里运行本安装器。"
 mountpoint -q "$MNT" && die "$MNT 已被挂载，请先卸载：umount -R $MNT"
 
+# 完整输出同时记到日志：出错时屏幕可能已经被清掉（例如在 screen 里运行），装完会复制到新系统的 /var/log
+LOG=/tmp/l4c-install.log
+exec > >(tee -a "$LOG") 2>&1
 cleanup() { umount -R "$MNT" 2>/dev/null || true; }
-trap 'warn "安装中断。可以修正问题后重新运行。"; cleanup' ERR
+# 只在主进程里报“中断”（子进程里的命令失败不代表安装失败）
+trap '((BASH_SUBSHELL)) || { warn "安装中断，完整输出见 $LOG。可以修正问题后重新运行。"; cleanup; }' ERR
 
 echo "
   ┌──────────────────────────────────────────────────────┐
@@ -47,7 +51,7 @@ ok "网络正常"
 # ------------------------------------------------------------ 2. 迁移包 --
 # 来源：U 盘上的迁移包目录，或 Windows 工具通过局域网提供的地址（边下载边导入，不占 U 盘/内存）
 BACKUP=""
-mapfile -t found < <(find /run/media /media /mnt -maxdepth 6 -name manifest.env -path '*l4c-backup-*' -printf '%h\n' 2>/dev/null | sort -r)
+mapfile -t found < <({ find /run/media /media /mnt -maxdepth 6 -name manifest.env -path '*l4c-backup-*' -printf '%h\n' 2>/dev/null || true; } | sort -r)
 echo "迁移包来源："
 for i in "${!found[@]}"; do echo "  $((i + 1))) U 盘：${found[$i]}"; done
 echo "  w) 从 Windows 电脑通过局域网获取"
@@ -82,11 +86,16 @@ fi
 # ------------------------------------------------------------ 3. 硬盘 ----
 live_disk=""
 src=$(findmnt -no SOURCE /run/miso/bootmnt 2>/dev/null || true)
-[[ -n $src ]] && live_disk=$(lsblk -no PKNAME "$src" 2>/dev/null | head -1)
-mapfile -t disks < <(lsblk -dpno NAME,SIZE,TYPE,MODEL | awk '$3=="disk" && $1 !~ /(zram|loop|sr)/' | grep -v "^/dev/${live_disk:-NONE} ")
+if [[ -n $src ]]; then
+  live_disk=$(lsblk -no PKNAME "$src" 2>/dev/null | head -1)
+  # 整盘写入的 ISO（或 kexec 启动）时 bootmnt 直接是整块盘，没有父设备
+  [[ -n $live_disk ]] || live_disk=$(basename "$src")
+fi
+# 排除 eMMC 的硬件引导区 mmcblkXbootY / rpmb：它们也显示为 disk，但只有几 MB，不能装系统
+mapfile -t disks < <(lsblk -dpno NAME,SIZE,TYPE,MODEL | awk '$3=="disk" && $1 !~ /(zram|loop|sr|boot[0-9]+$|rpmb$)/' | grep -v "^/dev/${live_disk:-NONE} " || true)
 ((${#disks[@]})) || die "找不到可安装的硬盘"
 echo "可安装的硬盘："; for i in "${!disks[@]}"; do echo "  $((i + 1))) ${disks[$i]}"; done
-def=1; for i in "${!disks[@]}"; do [[ ${disks[$i]} == /dev/mmcblk* ]] && def=$((i + 1)); done
+def=1; for i in "${!disks[@]}"; do [[ ${disks[$i]} == /dev/mmcblk* ]] && { def=$((i + 1)); break; }; done
 sel=$(ask "安装到哪块硬盘？" "$def")
 [[ $sel =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#disks[@]})) || die "无效选择"
 DISK=$(awk '{print $1}' <<<"${disks[$((sel - 1))]}")
@@ -219,6 +228,7 @@ L4C_YES=$L4C_YES_SAVED manjaro-chroot "$MNT" bash /opt/linux-for-chromebook/inst
 if [[ -n $BACKUP && ! $BACKUP =~ ^https?:// ]]; then umount "$MNT/mnt/l4c-backup" 2>/dev/null || true; fi
 rm -f "$MNT/root/l4c-install.env"
 trap - ERR
+cp "$LOG" "$MNT/var/log/l4c-install.log" 2>/dev/null || true
 sync
 cleanup
 ok "安装完成！"

@@ -125,6 +125,8 @@ restore_packages() {
   avail=$(pacman -Slq | sort -u)
   while read -r p; do
     [[ -z $p || $p =~ $SKIP_RE ]] && continue
+    # optimize.sh 已改用 iHD 并去掉了 i965（Alder Lake 及更新的核显不支持），不要再从旧清单装回来
+    [[ $p =~ ^(lib32-)?libva-intel-driver$ ]] && grep -q '^LIBVA_DRIVER_NAME=iHD' /etc/environment 2>/dev/null && continue
     pkg_installed "$p" && continue
     if grep -qxF -- "$p" <<<"$avail"; then want+=("$p"); else missing+=("$p"); fi
   done <"$SRC/packages/native.txt"
