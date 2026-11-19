@@ -61,17 +61,17 @@ sudo l4c scan            # 生成 ~/l4c-scan-*.md
 - 视频：vainfo 显示 iHD 26.3.5，H.264/HEVC 解码和编码；Xorg 用 modesetting
 - 内存：zram 7.3G、THP madvise、MGLRU 1000、swappiness 180、page-cluster 0；Wi-Fi 省电关闭后开机 9 分钟内 0 条 missed beacons
 - 已知坑：原厂固件的 RW_LEGACY 不保存 UEFI 变量（BootNext、新启动项重启即丢），Ctrl+L 后又来不及按 Esc，
-  所以从 U 盘启动的可靠办法是在旧系统里 **kexec** 进 Live（见 `chromebook-scripts/l4c-kexec.sh` 的做法）；U 盘插着时固件有时会优先启动 U 盘
+  所以从 U 盘启动的可靠办法是在旧系统里 **kexec** 进 Live（`sudo bash setup/kexec-live.sh`）；U 盘插着时固件有时会优先启动 U 盘
 - 已知坑：新系统的 Wi-Fi 第一次会用随机 MAC 拿到新 IP；旧系统的 ufw 是 `ENABLED=no`，新系统同样未启用（已补 9993/udp 规则备用）
 
-- [ ] `install/install.sh`：Manjaro Live 上 `basestrap` / `manjaro-chroot` / `fstabgen` 是否可用；btrfs `mkswapfile`；RW_LEGACY 下 `grub-install` 写 NVRAM 是否成功（失败会自动改 `--no-nvram`，`--removable` 默认路径是必须的）
-- [ ] `install/packages/*.txt` 包名是否都在 Manjaro 源里（`pamac-gtk3`、`xfce4-docklike-plugin`、`adobe-source-han-sans-cn-fonts`、内核包名 `linux618`）
-- [ ] 声卡：`l4c audio`（固定 chromebook-linux-audio 84b700e，自动选菜单 1）装完后 `pactl list short sinks` 不再只有 auto_null；扬声器、耳机、内置麦克风（`dmic_num=4`）都要试
+- [x] `install/install.sh`：Manjaro Live 上 `basestrap` / `manjaro-chroot` / `fstabgen` 是否可用；btrfs `mkswapfile`；RW_LEGACY 下 `grub-install` 写 NVRAM 是否成功（失败会自动改 `--no-nvram`，`--removable` 默认路径是必须的）
+- [x] `install/packages/*.txt` 包名是否都在 Manjaro 源里（`pamac-gtk3`、`xfce4-docklike-plugin`、`adobe-source-han-sans-cn-fonts`、内核包名 `linux618`）
+- [ ] 声卡：设备都已出现（见上），**还要实际试听**扬声器、耳机，试录内置麦克风（`dmic_num=4`）
 - [ ] keyd：Alt+亮度键 = 键盘背光（`kbdillumdown/up`）在 xfce4-power-manager 下是否生效；Alt+F4、搜索键组合
 - [ ] `wipe.sh disk`：eMMC 是否支持 `blkdiscard -s`；擦除后抽查结果
 - [ ] Xfce 面板 XML（`setup/desktop-win11.sh`）：`p=8` 是否是底部、`length` 类型、docklike rc 键名、whiskermenu 属性名、clock `digital-layout` 枚举
 - [ ] zram（`min(ram*2, 8192)`）+ earlyoom + MGLRU `min_ttl_ms=1000` 组合下，开 QQ + Chrome 时是否还会卡死
-- [ ] Wi-Fi 关闭省电后 missed beacons 告警是否消失（`journalctl -k | grep missed`）
+- [x] Wi-Fi 关闭省电后 missed beacons 告警是否消失（`journalctl -k | grep missed`）
 - [ ] Windows 工具 `windows/l4c-win.ps1`：**从未在真实 Windows 上运行过**；HttpListener + 防火墙、分块上传、中文路径、`netsh wlan export`、`tar.exe` zstd、BITS
 - [ ] ChromeOS：`recovery2.json` 字段名和 SHA1 校验对象；ChromeOS Flex 下载地址
 - [ ] 新系统里 `vainfo` 显示 iHD，Chrome 的 `chrome://gpu` 里 Video Decode 为硬件加速
