@@ -5,3 +5,5 @@ cachyos-keyring
 cachyos-mirrorlist
 cachyos-v3-mirrorlist
 cachyos-rate-mirrors
+# AUR 助手（CachyOS 源里有现成的），用来装 QQ、Chrome、Edge 这些 AUR 软件
+paru

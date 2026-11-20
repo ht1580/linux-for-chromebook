@@ -19,10 +19,12 @@ first() { local f; for f in "$@"; do [[ -e $f ]] && { echo "$f"; return 0; }; do
 K="" I="" U="" CMD=""
 if [[ -d $M/arch/boot/x86_64 ]]; then
   # archiso（Arch、CachyOS 等）：/arch/boot/x86_64/vmlinuz-linux*，参数 archisobasedir / archisolabel
-  K=$(first "$M"/arch/boot/x86_64/vmlinuz-*)
-  I=$(first "$M"/arch/boot/x86_64/initramfs-*[!k].img)
+  # CachyOS 的 ISO 里有 linux-cachyos 和 linux-cachyos-lts 两个内核：优先用前者，initramfs 按内核名配对
+  K=$(first "$M/arch/boot/x86_64/vmlinuz-linux-cachyos" "$M/arch/boot/x86_64/vmlinuz-linux" "$M"/arch/boot/x86_64/vmlinuz-*)
+  [[ -n $K ]] && I=$(first "$M/arch/boot/x86_64/initramfs-${K##*/vmlinuz-}.img")
   U=$(first "$M/arch/boot/intel-ucode.img" "$M/boot/intel-ucode.img")
-  CMD="archisobasedir=arch archisolabel=$LABEL i915.modeset=1 quiet"
+  # copytoram=n：不把 2~3 GB 的系统镜像复制进内存（这台只有 4G，U 盘一直插着）；cow_spacesize：Live 里装软件的临时空间
+  CMD="archisobasedir=arch archisolabel=$LABEL copytoram=n cow_spacesize=1G i915.modeset=1 quiet"
 else
   # miso（Manjaro）：/boot/vmlinuz-x86_64，参数 misobasedir / misolabel
   K=$(first "$M/boot/vmlinuz-x86_64" "$M"/boot/vmlinuz*)

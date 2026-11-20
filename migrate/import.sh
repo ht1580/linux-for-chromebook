@@ -115,7 +115,7 @@ HOME_DIR=$(user_home "$USER_NAME")
 USER_GROUP=$(id -gn "$USER_NAME")
 
 # 新系统已经替换/优化掉的软件，不再装回来
-SKIP_RE='^(linux[0-9]+(-headers)?|linux|linux-lts|linux-cachyos.*|linux-firmware|grub|efibootmgr|os-prober|memtest86\+.*|mhwd.*|manjaro-.*|pamac.*|calamares.*|cachyos-.*|noto-fonts-cjk|systemd-swap|zramswap|swapspace)$'
+SKIP_RE='^(linux[0-9]+(-headers)?|linux|linux-lts|linux-cachyos.*|linux-firmware|grub|efibootmgr|os-prober|memtest86\+.*|mhwd.*|manjaro-.*|pamac.*|calamares.*|cachyos-.*|grub-theme-manjaro|install-grub|update-grub|illyria-wallpaper|mkinitcpio-openswap|udev-usb-sync|noto-fonts-cjk|systemd-swap|zramswap|swapspace)$'
 
 restore_packages() {
   [[ -s $SRC/packages/native.txt ]] || return 0

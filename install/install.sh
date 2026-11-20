@@ -181,6 +181,19 @@ L4C_YES=1 bash "$L4C_ROOT/setup/wipe.sh" efi || warn "清理旧启动项失败�
 
 # ------------------------------------------------------------ 6. 安装 ----
 info "准备软件源（$DISTRO）"
+# CachyOS 的启动 U 盘只配了通用的 [cachyos] 源，官方安装器装的时候才按 CPU 加优化源。
+# N100 支持 x86-64-v3（AVX2），这里同样加上 v3 源，系统软件就会换成 v3 编译的版本；下面 pacstrap -P 会把这份配置带进新系统
+cachyos_v3_repos() {
+  /lib/ld-linux-x86-64.so.2 --help 2>/dev/null | grep -q 'x86-64-v3 (supported, searched)' ||
+    { warn "CPU 不支持 x86-64-v3，使用通用软件源"; return 0; }
+  grep -q '^\[cachyos-v3\]' /etc/pacman.conf && return 0
+  [[ -f /etc/pacman.d/cachyos-v3-mirrorlist ]] || pacman -Sy --noconfirm --needed cachyos-v3-mirrorlist >/dev/null
+  local r v3=""
+  for r in cachyos-v3 cachyos-core-v3 cachyos-extra-v3; do v3+="[$r]"$'\n'"Include = /etc/pacman.d/cachyos-v3-mirrorlist"$'\n\n'; done
+  V3=$v3 awk '/^\[(cachyos|core)\]/ && !d { printf "%s", ENVIRON["V3"]; d = 1 } { print }' /etc/pacman.conf >/tmp/l4c-pacman.conf
+  cat /tmp/l4c-pacman.conf >/etc/pacman.conf
+  ok "已启用 CachyOS x86-64-v3 优化软件源"
+}
 case $DISTRO in
   manjaro)
     if [[ -n ${MIRROR_COUNTRY:-} ]]; then pacman-mirrors -c "$MIRROR_COUNTRY" >/dev/null 2>&1 || true
@@ -190,7 +203,8 @@ case $DISTRO in
     have reflector && reflector --latest 10 --protocol https --sort rate ${MIRROR_COUNTRY:+--country "$MIRROR_COUNTRY"} \
       --save /etc/pacman.d/mirrorlist >/dev/null 2>&1 || true ;;
   cachyos)
-    have cachyos-rate-mirrors && cachyos-rate-mirrors >/dev/null 2>&1 || true ;;
+    have cachyos-rate-mirrors && cachyos-rate-mirrors >/dev/null 2>&1 || true
+    cachyos_v3_repos ;;
 esac
 pacman -Syy --noconfirm >/dev/null
 # 装系统用的工具：Manjaro 是 basestrap / manjaro-chroot / fstabgen，Arch 系是 pacstrap / arch-chroot / genfstab
@@ -198,7 +212,7 @@ if [[ $DISTRO == manjaro ]]; then
   pacman -Q manjaro-tools-base >/dev/null 2>&1 || pacman -S --noconfirm --needed manjaro-tools-base >/dev/null
   STRAP=(basestrap) CHROOT=manjaro-chroot FSTAB=fstabgen
 else
-  # -K：给新系统初始化自己的密钥；-P：带上 Live 系统的软件源配置（CachyOS 的 v3 软件源就在里面）
+  # -K：给新系统初始化自己的密钥；-P：带上 Live 系统的软件源配置（包括上面加的 CachyOS v3 源）
   pacman -Q arch-install-scripts >/dev/null 2>&1 || pacman -S --noconfirm --needed arch-install-scripts >/dev/null
   STRAP=(pacstrap -K -P) CHROOT=arch-chroot FSTAB=genfstab
 fi
@@ -220,7 +234,10 @@ info "安装 ${#pkgs[@]} 个软件包（10~30 分钟，取决于网速）"
 # pacstrap -K 给新系统建的是空密钥环，导入发行版的签名密钥，否则以后更新会校验失败
 case $DISTRO in
   arch)    "$CHROOT" "$MNT" pacman-key --populate archlinux >/dev/null ;;
-  cachyos) "$CHROOT" "$MNT" pacman-key --populate archlinux cachyos >/dev/null ;;
+  cachyos)
+    "$CHROOT" "$MNT" pacman-key --populate archlinux cachyos >/dev/null
+    # Live 系统给 [cachyos] 源关了签名校验（TrustAll），新系统里恢复成默认的必须校验
+    sed -i '/^SigLevel *= *Optional TrustAll$/d' "$MNT/etc/pacman.conf" ;;
 esac
 
 info "创建 ${SWAP_GB}G 兜底 swap 文件"

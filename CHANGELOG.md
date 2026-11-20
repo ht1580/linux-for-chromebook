@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- **CachyOS 安装补全**（对照官方 ISO 核对）：启动 U 盘只带通用源，安装器在支持 x86-64-v3 的 CPU 上自动加 v3 优化源；新系统恢复 [cachyos] 源的签名校验；
+  装上 paru（装 AUR 软件用）；kexec 热启动不把整个 ISO 复制进内存，并按内核名配对 initramfs；导入时跳过 Manjaro 独有的主题、壁纸、update-grub 等。
+  重装步骤见 [docs/reinstall-cachyos.md](docs/reinstall-cachyos.md)
 - **支持 CachyOS 和 Arch**：安装器按启动 U 盘的发行版选择 basestrap / pacstrap、内核（linux618 / linux-cachyos / linux）、镜像工具；
   软件包列表拆成通用和各发行版专属；kexec 热启动认得 archiso（Arch / CachyOS）的 ISO；从 Manjaro 迁出时跳过 Manjaro 专属软件
 - 全新安装的软件包加上 Win11 任务栏需要的 xfce4-genmon-plugin、xdotool（之前漏了）

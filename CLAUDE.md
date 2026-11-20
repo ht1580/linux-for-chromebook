@@ -82,7 +82,7 @@ sudo l4c scan            # 生成 ~/l4c-scan-*.md
 ## 发行版
 
 `lib/common.sh` 的 `l4c_distro` 返回 manjaro / cachyos / arch（其他 Arch 系按 arch）。安装器、软件包列表（`install/packages/base-<发行版>.txt`）、
-`kexec-live.sh`（miso / archiso）都按它分支；`grub_regen` 代替 Manjaro 才有的 update-grub。**CachyOS / Arch 路径还没在真机上装过。**
+`kexec-live.sh`（miso / archiso）都按它分支；`grub_regen` 代替 Manjaro 才有的 update-grub。**CachyOS / Arch 路径还没在真机上装过**；换 CachyOS 的完整步骤见 [docs/reinstall-cachyos.md](docs/reinstall-cachyos.md)。
 Windows 工具（`windows/l4c-win.ps1`）制作 U 盘时仍只下载 Manjaro 镜像。
 
 ## 路线图
